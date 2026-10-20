@@ -44,16 +44,25 @@ npm run build
 
 See [examples/cordis.patch.yml](examples/cordis.patch.yml) and [packages/dsh-plugin/cordis.patch.yml](packages/dsh-plugin/cordis.patch.yml).
 
+Install into the **web profile** (not only `npm install -g`):
+
+```sh
+dsh plugin --profile web add @lonk1989/dsh-plugin
+```
+
+Mount with an **`insert:`** patch (a bare `- id:` only updates an existing row):
+
 ```yaml
-- id: webclaw
-  name: '@lonk1989/dsh-plugin'
-  config:
-    binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
-    registerSkill: true
+- insert:
+    - id: webclaw
+      name: '@lonk1989/dsh-plugin'
+      config:
+        binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
+        registerSkill: true
 ```
 
 ```sh
-dsh web --patch examples/cordis.patch.yml
+pnpm dsh web --patch examples/cordis.patch.yml
 ```
 
 Ask the agent to run a recipe such as:

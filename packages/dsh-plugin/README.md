@@ -16,22 +16,27 @@ DeepSeek Harness community plugin for **deterministic browser RPA** driven by Ch
 
 ## Install
 
+Install into the **DSH workspace** (the directory where you run `dsh` / `pnpm dsh`).  
+`npm install -g` alone is not enough — Cordis resolves plugins from that workspace’s `node_modules`.
+
 ```sh
-npm install @lonk1989/dsh-plugin
+cd /path/to/deepseek-harness
+pnpm add @lonk1989/dsh-plugin
 ```
 
-Build or download `webclaw-lite` from this repository’s Releases, then mount:
+Build or download `webclaw-lite` from this repository’s Releases, then mount with an **`insert:`** patch (a bare `- id:` only updates an existing row and will warn `entry "webclaw" not found`):
 
 ```yaml
-- id: webclaw
-  name: '@lonk1989/dsh-plugin'
-  config:
-    binaryPath: 'C:/path/to/webclaw-lite.exe'
-    registerSkill: true
+- insert:
+    - id: webclaw
+      name: '@lonk1989/dsh-plugin'
+      config:
+        binaryPath: 'C:/path/to/webclaw-lite.exe'
+        registerSkill: true
 ```
 
 ```sh
-dsh web --patch examples/cordis.patch.yml
+pnpm dsh web --patch examples/cordis.patch.yml
 ```
 
 ## Model experience

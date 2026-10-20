@@ -1,13 +1,18 @@
 # Mount @lonk1989/dsh-plugin into DeepSeek Harness.
-# Adjust binaryPath to your built webclaw-lite.
+# Must use `insert:` — a bare `- id:` only patches an existing row.
 #
-# Install:
-#   npm install @lonk1989/dsh-plugin
-#   # or: npm install E:/Workspace/webclaw-oss/packages/dsh-plugin
+# Install into the DSH workspace (global npm install is NOT enough):
+#   cd <deepseek-harness>
+#   pnpm add @lonk1989/dsh-plugin
+#   # or: pnpm add E:/Workspace/webclaw-oss/packages/dsh-plugin
+#
+# Then:
+#   pnpm dsh web --patch E:/Workspace/webclaw-oss/examples/cordis.patch.yml
 
-- id: webclaw
-  name: '@lonk1989/dsh-plugin'
-  config:
-    binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
-    ensureOnBoot: false
-    registerSkill: true
+- insert:
+    - id: webclaw
+      name: '@lonk1989/dsh-plugin'
+      config:
+        binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
+        ensureOnBoot: false
+        registerSkill: true
