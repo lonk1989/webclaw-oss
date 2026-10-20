@@ -1,5 +1,5 @@
-/**
- * @webclaw/dsh-plugin — recipe-level browser RPA for DeepSeek Harness.
+﻿/**
+ * @lonk1989/dsh-plugin — recipe-level browser RPA for DeepSeek Harness.
  *
  * Registers task tools that spawn webclaw-lite. Does not claim ctx.browserUse.
  * @module

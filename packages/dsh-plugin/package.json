@@ -1,5 +1,5 @@
 {
-  "name": "@webclaw/dsh-plugin",
+  "name": "@lonk1989/dsh-plugin",
   "version": "0.1.0",
   "description": "DeepSeek Harness plugin: deterministic Chinese-recipe browser RPA via webclaw-lite",
   "license": "MIT",

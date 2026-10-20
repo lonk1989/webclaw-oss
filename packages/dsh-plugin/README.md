@@ -1,4 +1,4 @@
-# @webclaw/dsh-plugin
+﻿# @lonk1989/dsh-plugin
 
 DeepSeek Harness community plugin for **deterministic browser RPA** driven by Chinese natural-language recipes (English vocabulary planned later).
 
@@ -17,14 +17,14 @@ DeepSeek Harness community plugin for **deterministic browser RPA** driven by Ch
 ## Install
 
 ```sh
-npm install @webclaw/dsh-plugin
+npm install @lonk1989/dsh-plugin
 ```
 
 Build or download `webclaw-lite` from this repository’s Releases, then mount:
 
 ```yaml
 - id: webclaw
-  name: '@webclaw/dsh-plugin'
+  name: '@lonk1989/dsh-plugin'
   config:
     binaryPath: 'C:/path/to/webclaw-lite.exe'
     registerSkill: true

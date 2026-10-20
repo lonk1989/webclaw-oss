@@ -1,4 +1,4 @@
----
+﻿---
 name: webclaw-lite
 description: >-
   Local webclaw-lite browser RPA: open pages, click visible text, wait, type,
@@ -14,7 +14,7 @@ Deterministic browser RPA driven by **Chinese natural-language recipes**.
 
 ## Prefer Host tools (DSH)
 
-When `@webclaw/dsh-plugin` is mounted, use:
+When `@lonk1989/dsh-plugin` is mounted, use:
 
 - `webclaw_status`
 - `webclaw_run` (pass the full recipe string)

@@ -1,9 +1,9 @@
-# Mounting webclaw for agents
+﻿# Mounting webclaw for agents
 
 ## DeepSeek Harness (recommended)
 
 1. Build or download `webclaw-lite`
-2. `npm install @webclaw/dsh-plugin`
+2. `npm install @lonk1989/dsh-plugin`
 3. Patch cordis with [examples/cordis.patch.yml](../../examples/cordis.patch.yml)
 4. Add GitHub topic `dsh-plugin` on the plugin repo for discovery
 

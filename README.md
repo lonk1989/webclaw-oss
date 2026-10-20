@@ -1,4 +1,4 @@
-# webclaw-oss
+﻿# webclaw-oss
 
 **Deterministic browser RPA driven by natural-language recipes (Chinese first).**
 
@@ -9,7 +9,7 @@ This repository is the open-source fork of webclaw for the [DeepSeek Harness](ht
 | Piece | Role |
 |-------|------|
 | `runtime/` | Rust **webclaw-lite** CLI — parse Chinese recipes, drive local Chrome via CDP, HITL for captcha/slider |
-| `packages/dsh-plugin/` | npm **`@webclaw/dsh-plugin`** — Host tools + Skill that spawn lite |
+| `packages/dsh-plugin/` | npm **`@lonk1989/dsh-plugin`** — Host tools + Skill that spawn lite |
 
 Same recipe → same business path. Prefer fixing the recipe over inventing CSS selectors.
 
@@ -37,7 +37,7 @@ cargo build --release --bin webclaw-lite
 cd packages/dsh-plugin
 npm install
 npm run build
-# or: npm install @webclaw/dsh-plugin  (after publish)
+# or: npm install @lonk1989/dsh-plugin  (after publish)
 ```
 
 ### 3. Mount in DSH
@@ -46,7 +46,7 @@ See [examples/cordis.patch.yml](examples/cordis.patch.yml) and [packages/dsh-plu
 
 ```yaml
 - id: webclaw
-  name: '@webclaw/dsh-plugin'
+  name: '@lonk1989/dsh-plugin'
   config:
     binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
     registerSkill: true
@@ -75,7 +75,7 @@ Ask the agent to run a recipe such as:
 
 ```text
 runtime/                 # Rust crate (lite-first, desktop feature opt-in)
-packages/dsh-plugin/     # @webclaw/dsh-plugin
+packages/dsh-plugin/     # @lonk1989/dsh-plugin
 examples/                # sample recipes + cordis overlay
 skills/webclaw-lite/     # CLI Skill docs (source of truth also copied into plugin assets)
 ```

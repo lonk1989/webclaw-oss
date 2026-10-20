@@ -1,12 +1,12 @@
-# Mount @webclaw/dsh-plugin into DeepSeek Harness.
+# Mount @lonk1989/dsh-plugin into DeepSeek Harness.
 # Adjust binaryPath to your built webclaw-lite.
 #
-# Install (no public npm yet — use GitHub or local path):
-#   npm install github:lonk1989/webclaw-oss#main:packages/dsh-plugin
+# Install:
+#   npm install @lonk1989/dsh-plugin
 #   # or: npm install E:/Workspace/webclaw-oss/packages/dsh-plugin
 
 - id: webclaw
-  name: '@webclaw/dsh-plugin'
+  name: '@lonk1989/dsh-plugin'
   config:
     binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
     ensureOnBoot: false

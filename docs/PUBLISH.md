@@ -1,10 +1,10 @@
-# Publishing webclaw-oss to the DSH community
+﻿# Publishing webclaw-oss to the DSH community
 
 ## One-time setup
 
 1. Create a GitHub repository (suggested name `webclaw-oss`).
 2. Push this tree; add repository topic **`dsh-plugin`** (required for [DSH discoverability](https://github.com/topics/dsh-plugin)).
-3. Create npm scope/user that can publish `@webclaw/dsh-plugin` (or rename the package in `packages/dsh-plugin/package.json` to your scope).
+3. Create npm scope/user that can publish `@lonk1989/dsh-plugin` (or rename the package in `packages/dsh-plugin/package.json` to your scope).
 4. Add repository secret `NPM_TOKEN` with publish rights.
 
 ## Release flow
@@ -17,7 +17,7 @@ git push origin v0.1.0
 GitHub Actions (`release.yml`) will:
 
 - Build `webclaw-lite-windows-x64.exe` and attach it to the GitHub Release
-- `npm publish` `@webclaw/dsh-plugin` when `NPM_TOKEN` is set
+- `npm publish` `@lonk1989/dsh-plugin` when `NPM_TOKEN` is set
 
 ## Manual publish
 
