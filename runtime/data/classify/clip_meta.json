@@ -1,0 +1,56 @@
+{
+  "model": "openai/clip-vit-base-patch32",
+  "dim": 512,
+  "labels": [
+    "公厕便池不净",
+    "垃圾桶未密闭",
+    "垃圾桶满溢",
+    "树坑散落垃圾",
+    "垃圾点散落垃圾",
+    "路面散落垃圾"
+  ],
+  "prompts": {
+    "公厕便池不净": [
+      "a dirty public toilet interior with unclean squat toilet",
+      "filthy bathroom stall and dirty toilet bowl",
+      "unsanitary public restroom urinal or squat pan"
+    ],
+    "垃圾桶未密闭": [
+      "trash bin with open lid not closed",
+      "garbage can uncovered lid ajar",
+      "street trash bin with lid left open"
+    ],
+    "垃圾桶满溢": [
+      "overflowing trash bin full of garbage spilling out",
+      "overfilled garbage can with litter overflowing",
+      "trash can stuffed and overflowing onto ground"
+    ],
+    "树坑散落垃圾": [
+      "litter and trash inside a tree pit planting hole",
+      "garbage scattered in tree well around street tree",
+      "rubbish in soil tree pit beside sidewalk"
+    ],
+    "垃圾点散落垃圾": [
+      "scattered trash around a garbage collection point",
+      "litter on ground at waste dump station",
+      "rubbish strewn near trash drop-off site"
+    ],
+    "路面散落垃圾": [
+      "scattered litter garbage on road pavement sidewalk",
+      "trash on street surface and pedestrian walkway",
+      "roadside litter and debris on asphalt or tiles"
+    ]
+  },
+  "vision_onnx": "vision_model_quantized.onnx",
+  "input_size": 224,
+  "mean": [
+    0.48145466,
+    0.4578275,
+    0.40821073
+  ],
+  "std": [
+    0.26862954,
+    0.26130258,
+    0.27577711
+  ]
+}

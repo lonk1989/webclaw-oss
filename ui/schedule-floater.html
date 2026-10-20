@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>定时任务</title>
+  <style>
+    :root {
+      --brand-0: #00532c;
+      --brand-1: #006f3f;
+      --brand-2: #298754;
+      --brand-1-rgb: 0, 111, 63;
+      --brand-2-rgb: 41, 135, 84;
+      --brand-4: #d0f0d6;
+      --brand-5: #e8f5ec;
+      --text: #1a3328;
+      --muted: #5a7a68;
+      --border: #d7e3db;
+      --surface: #ffffff;
+      --bg: #f7faf8;
+      --danger: #c0392b;
+      /* 与 Windows 11 无边框窗口圆角对齐（约 8px） */
+      --radius: 8px;
+      --font: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+    [data-theme="dark"] {
+      --text: #eef6f0;
+      --muted: #9ab5a6;
+      --border: rgba(255, 255, 255, 0.12);
+      --surface: #1e2a24;
+      --bg: #151c18;
+      --brand-5: rgba(0, 111, 63, 0.22);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: var(--font);
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+      color: var(--text);
+    }
+    .card {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 24px rgba(26, 51, 40, 0.14);
+      overflow: hidden;
+    }
+    body.collapsed .card {
+      border-radius: var(--radius);
+      box-shadow: 0 4px 16px rgba(26, 51, 40, 0.16);
+    }
+    /* 最小化态弹出菜单/对话框：窗口临时放大，卡片仍保持条状，下方透明区放弹出层 */
+    body.collapsed.popup-space .card {
+      height: 42px;
+      max-height: 42px;
+      flex: none;
+    }
+    .titlebar {
+      display: flex;
+      align-items: stretch;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      min-height: 40px;
+      background: var(--bg);
+    }
+    body.collapsed .titlebar {
+      border-bottom: none;
+      min-height: 100%;
+      height: 100%;
+    }
+    .drag {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 6px 8px 12px;
+      min-width: 0;
+      cursor: grab;
+      /* 不用 -webkit-app-region:drag，否则 Windows 右键会弹出系统「移动/关闭」 */
+    }
+    .drag:active { cursor: grabbing; }
+    .mark {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--brand-1);
+      flex-shrink: 0;
+      box-shadow: 0 0 0 3px rgba(var(--brand-1-rgb), 0.18);
+    }
+    .title {
+      font-size: 0.84rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body.collapsed .title { font-size: 0.8rem; }
+    .count {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .btn-icon {
+      width: 36px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { background: rgba(var(--brand-1-rgb), 0.1); color: var(--brand-1); }
+    body.collapsed .btn-icon {
+      width: 34px;
+      border-radius: var(--radius);
+      margin-right: 2px;
+    }
+    .btn-icon svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+    .list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    body.collapsed .list { display: none; }
+    .empty {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.5;
+      padding: 24px 12px;
+    }
+    .item {
+      padding: 10px 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .item.off { opacity: 0.55; }
+    .item-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .item-name {
+      font-size: 0.84rem;
+      font-weight: 600;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .badge {
+      flex-shrink: 0;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--brand-5);
+      color: var(--brand-1);
+    }
+    [data-theme="dark"] .badge { color: var(--brand-4); }
+    .badge.off {
+      background: rgba(0,0,0,0.06);
+      color: var(--muted);
+    }
+    .badge.expired {
+      background: #fef3c7;
+      color: #b45309;
+    }
+    [data-theme="dark"] .badge.expired {
+      background: rgba(180, 83, 9, 0.35);
+      color: #fcd34d;
+    }
+    .meta {
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .ctx {
+      position: fixed;
+      z-index: 50;
+      min-width: 160px;
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(26, 51, 40, 0.16);
+      display: none;
+    }
+    .ctx.open { display: block; }
+    .ctx button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 0.82rem;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .ctx button:hover { background: rgba(var(--brand-1-rgb), 0.1); color: var(--brand-1); }
+    .ctx button.danger { color: var(--danger); }
+    .ctx button.danger:hover { background: rgba(192, 57, 43, 0.08); }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(26, 51, 40, 0.35);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .overlay.open { display: flex; }
+    .dialog {
+      width: 100%;
+      max-width: 260px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 12px 32px rgba(26, 51, 40, 0.2);
+    }
+    .dialog h3 { font-size: 0.92rem; margin-bottom: 8px; }
+    .dialog p { font-size: 0.8rem; color: var(--muted); line-height: 1.45; margin-bottom: 14px; }
+    .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .dialog-actions button {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font: inherit;
+      font-size: 0.82rem;
+      cursor: pointer;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .dialog-actions button.primary {
+      background: var(--brand-1);
+      border-color: var(--brand-1);
+      color: #fff;
+    }
+    .dialog-actions button.primary:hover { background: var(--brand-2); }
+  </style>
+</head>
+<body>
+  <div class="card" id="root">
+    <div class="titlebar">
+      <div class="drag" id="floaterDrag">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="title">定时任务</span>
+        <span class="count" id="jobCount"></span>
+      </div>
+      <button type="button" class="btn-icon" id="btnCollapse" title="最小化" aria-label="最小化">
+        <svg id="iconCollapse" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3.5 8h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <svg id="iconExpand" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="display:none">
+          <path d="M4 6.2 L8 10.2 L12 6.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="list" id="jobList"></div>
+  </div>
+
+  <div class="ctx" id="ctxMenu" role="menu">
+    <button type="button" data-act="open-main">打开主界面</button>
+    <button type="button" data-act="expand">展开悬浮窗</button>
+    <button type="button" data-act="collapse">最小化悬浮窗</button>
+    <button type="button" data-act="close-floater">关闭悬浮窗</button>
+    <button type="button" class="danger" data-act="quit">退出程序…</button>
+  </div>
+
+  <div class="overlay" id="quitOverlay">
+    <div class="dialog">
+      <h3>退出 webclaw？</h3>
+      <p>退出后定时任务将不再触发。进行中的自动化也会停止。</p>
+      <div class="dialog-actions">
+        <button type="button" id="btnQuitCancel">取消</button>
+        <button type="button" class="primary" id="btnQuitOk">退出</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    const { listen } = window.__TAURI__.event;
+
+    function getCurrentWebviewWindow() {
+      const t = window.__TAURI__;
+      if (t?.webviewWindow?.getCurrentWebviewWindow) {
+        return t.webviewWindow.getCurrentWebviewWindow();
+      }
+      if (t?.window?.getCurrentWindow) {
+        return t.window.getCurrentWindow();
+      }
+      return null;
+    }
+
+    const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    const COLLAPSE_KEY = "webclaw.scheduleFloaterCollapsed";
+
+    let collapsed = false;
+    let jobSnapshot = [];
+    /** 最小化态临时放大：null | "menu" | "dialog" */
+    let popupSpace = null;
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+
+    function formatNext(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+
+    function scheduleLabel(spec) {
+      if (!spec) return "";
+      const hm = `${pad2(spec.hour ?? 0)}:${pad2(spec.minute ?? 0)}`;
+      if (spec.kind === "once") return "一次性";
+      if (spec.kind === "daily") return `每天 ${hm}`;
+      if (spec.kind === "weekly") return `每${WEEKDAYS[spec.weekday] || "?"} ${hm}`;
+      if (spec.kind === "monthly") return `每月${spec.day}日 ${hm}`;
+      return "";
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
+    }
+
+    async function loadTheme() {
+      try {
+        const s = await invoke("get_settings_cmd");
+        applyTheme(s.theme || "light");
+      } catch (_) {}
+    }
+
+    function updateCollapseUi() {
+      document.body.classList.toggle("collapsed", collapsed);
+      const btn = document.getElementById("btnCollapse");
+      const iconCollapse = document.getElementById("iconCollapse");
+      const iconExpand = document.getElementById("iconExpand");
+      btn.title = collapsed ? "展开" : "最小化";
+      btn.setAttribute("aria-label", collapsed ? "展开" : "最小化");
+      iconCollapse.style.display = collapsed ? "none" : "block";
+      iconExpand.style.display = collapsed ? "block" : "none";
+
+      const expandItem = document.querySelector('#ctxMenu [data-act="expand"]');
+      const collapseItem = document.querySelector('#ctxMenu [data-act="collapse"]');
+      if (expandItem) expandItem.style.display = collapsed ? "" : "none";
+      if (collapseItem) collapseItem.style.display = collapsed ? "none" : "";
+    }
+
+    async function applyWindowSize() {
+      popupSpace = null;
+      document.body.classList.remove("popup-space");
+      try {
+        await invoke("set_schedule_floater_collapsed_cmd", { collapsed });
+      } catch (_) {}
+    }
+
+    async function setCollapsed(next) {
+      collapsed = !!next;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+      } catch (_) {}
+      updateCollapseUi();
+      await applyWindowSize();
+    }
+
+    async function setPopupSpace(mode) {
+      if (!collapsed) {
+        popupSpace = null;
+        document.body.classList.remove("popup-space");
+        return;
+      }
+      const next = mode === "menu" || mode === "dialog" ? mode : null;
+      if (next === popupSpace) return;
+      popupSpace = next;
+      document.body.classList.toggle("popup-space", !!next);
+      try {
+        if (next) {
+          await invoke("set_schedule_floater_popup_space_cmd", { mode: next });
+        } else {
+          await invoke("set_schedule_floater_collapsed_cmd", { collapsed: true });
+        }
+      } catch (_) {}
+      // 等窗口尺寸落到布局
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+
+    function renderJobs(jobs) {
+      jobSnapshot = jobs || [];
+      const listEl = document.getElementById("jobList");
+      const countEl = document.getElementById("jobCount");
+      const enabledN = jobSnapshot.filter((j) => j.enabled).length;
+      countEl.textContent = jobSnapshot.length ? `${enabledN}/${jobSnapshot.length}` : "";
+
+      if (!jobSnapshot.length) {
+        listEl.innerHTML = '<div class="empty">暂无定时任务<br/>在主界面打开「定时任务」添加</div>';
+        return;
+      }
+      listEl.innerHTML = "";
+      jobSnapshot.forEach((job) => {
+        const div = document.createElement("div");
+        const expired = job.lastRunStatus === "expired";
+        div.className = "item" + (job.enabled ? "" : " off") + (expired ? " expired" : "");
+        const badgeText = expired ? "已过期" : (job.enabled ? "启用" : "停用");
+        const badgeCls = expired ? "expired" : (job.enabled ? "" : "off");
+        div.innerHTML =
+          `<div class="item-top">` +
+          `<div class="item-name"></div>` +
+          `<span class="badge ${badgeCls}">${badgeText}</span>` +
+          `</div>` +
+          `<div class="meta"></div>` +
+          `<div class="meta"></div>`;
+        div.querySelector(".item-name").textContent = job.name || "未命名";
+        const metas = div.querySelectorAll(".meta");
+        metas[0].textContent = scheduleLabel(job.schedule);
+        metas[1].textContent = job.enabled
+          ? (expired ? `计划 ${formatNext(job.nextRunAt)}` : `下次 ${formatNext(job.nextRunAt)}`)
+          : "已停用";
+        listEl.appendChild(div);
+      });
+    }
+
+    async function loadJobs() {
+      try {
+        const jobs = await invoke("list_scheduled_jobs_cmd");
+        renderJobs(jobs);
+      } catch (e) {
+        document.getElementById("jobList").innerHTML =
+          `<div class="empty">加载失败<br/>${String(e)}</div>`;
+      }
+    }
+
+    function hideCtx() {
+      document.getElementById("ctxMenu").classList.remove("open");
+    }
+
+    async function showCtx(x, y) {
+      if (collapsed) {
+        await setPopupSpace("menu");
+      }
+      const menu = document.getElementById("ctxMenu");
+      menu.classList.add("open");
+      const pad = 8;
+      const mw = menu.offsetWidth || 160;
+      const mh = menu.offsetHeight || 120;
+      let left = Math.min(x, window.innerWidth - mw - pad);
+      let top = Math.min(y, window.innerHeight - mh - pad);
+      if (collapsed) {
+        // 条状标题下方下拉，避免菜单贴顶被裁
+        top = Math.max(44, Math.min(y, window.innerHeight - mh - pad));
+        left = Math.max(pad, Math.min(left, window.innerWidth - mw - pad));
+      }
+      menu.style.left = `${Math.max(pad, left)}px`;
+      menu.style.top = `${Math.max(pad, top)}px`;
+    }
+
+    async function clearPopupIfIdle() {
+      const menuOpen = document.getElementById("ctxMenu").classList.contains("open");
+      const dialogOpen = document.getElementById("quitOverlay").classList.contains("open");
+      if (!menuOpen && !dialogOpen && popupSpace) {
+        await setPopupSpace(null);
+      }
+    }
+
+    async function openMainUi() {
+      try {
+        await invoke("show_main_ui_cmd");
+      } catch (_) {}
+    }
+
+    // 用 startDragging 实现拖动，保留网页右键菜单与双击
+    (function bindFloaterDragAndClick() {
+      const dragEl = document.getElementById("floaterDrag");
+      let dragTimer = null;
+
+      function clearDragTimer() {
+        if (dragTimer) {
+          clearTimeout(dragTimer);
+          dragTimer = null;
+        }
+      }
+
+      async function startDrag() {
+        try {
+          const win = getCurrentWebviewWindow();
+          if (win) await win.startDragging();
+        } catch (_) {}
+      }
+
+      dragEl.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest("#btnCollapse")) return;
+        clearDragTimer();
+        // 延迟启动拖动，避免吞掉双击
+        dragTimer = setTimeout(() => {
+          dragTimer = null;
+          void startDrag();
+        }, 160);
+      });
+      dragEl.addEventListener("mouseup", () => clearDragTimer());
+      dragEl.addEventListener("mouseleave", () => clearDragTimer());
+
+      // 任意区域双击（含最小化态）打开主界面
+      document.addEventListener("dblclick", (e) => {
+        if (e.target.closest("#btnCollapse")) return;
+        if (e.target.closest("#quitOverlay")) return;
+        if (e.target.closest("#ctxMenu")) return;
+        clearDragTimer();
+        e.preventDefault();
+        void openMainUi();
+      });
+    })();
+
+    document.getElementById("btnCollapse").onclick = (e) => {
+      e.stopPropagation();
+      void setCollapsed(!collapsed);
+    };
+
+    document.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void showCtx(e.clientX, e.clientY);
+    });
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("#ctxMenu")) return;
+      hideCtx();
+      void clearPopupIfIdle();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        hideCtx();
+        document.getElementById("quitOverlay").classList.remove("open");
+        void clearPopupIfIdle();
+      }
+    });
+
+    document.getElementById("ctxMenu").addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      e.stopPropagation();
+      hideCtx();
+      const act = btn.dataset.act;
+      if (act === "open-main") {
+        await setPopupSpace(null);
+        await openMainUi();
+      } else if (act === "expand") {
+        await setCollapsed(false);
+      } else if (act === "collapse") {
+        await setCollapsed(true);
+      } else if (act === "close-floater") {
+        await setPopupSpace(null);
+        try {
+          await invoke("set_schedule_floater_enabled_cmd", { enabled: false });
+        } catch (_) {
+          await invoke("hide_schedule_floater_cmd");
+        }
+      } else if (act === "quit") {
+        await setPopupSpace("dialog");
+        document.getElementById("quitOverlay").classList.add("open");
+      } else {
+        await clearPopupIfIdle();
+      }
+    });
+
+    document.getElementById("btnQuitCancel").onclick = () => {
+      document.getElementById("quitOverlay").classList.remove("open");
+      void clearPopupIfIdle();
+    };
+    document.getElementById("btnQuitOk").onclick = async () => {
+      try {
+        await invoke("quit_app_cmd");
+      } catch (_) {
+        getCurrentWebviewWindow()?.close();
+      }
+    };
+
+    (async () => {
+      try {
+        collapsed = localStorage.getItem(COLLAPSE_KEY) === "1";
+      } catch (_) {
+        collapsed = false;
+      }
+      updateCollapseUi();
+      // 收起态才需同步尺寸；首屏 invoke 改尺寸曾触发主线程死锁导致白屏
+      if (collapsed) {
+        await applyWindowSize();
+      }
+      await loadTheme();
+      await loadJobs();
+      try {
+        await listen("scheduled-jobs-changed", () => loadJobs());
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>webclaw 任务</title>
+  <style>
+    :root {
+      --brand: #006f3f;
+      --brand-2: #298754;
+      --brand-soft: #e8f5ec;
+      --text: #1a3328;
+      --muted: #5a7a68;
+      --border: #d7e3db;
+      --danger: #c0392b;
+      --surface: #ffffff;
+      --bg: #f4f6f5;
+      /* 与 Windows 11 无边框窗口圆角对齐（约 8px） */
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+    }
+    .card {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 0 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 24px rgba(26, 51, 40, 0.12);
+      overflow: hidden;
+    }
+    .titlebar {
+      display: flex;
+      align-items: stretch;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      min-height: 42px;
+    }
+    .titlebar-drag {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 8px 8px 14px;
+      min-width: 0;
+      cursor: grab;
+      -webkit-app-region: drag;
+      app-region: drag;
+    }
+    .titlebar-drag:active { cursor: grabbing; }
+    .titlebar .spinner {
+      width: 20px; height: 20px; flex-shrink: 0;
+      border: 3px solid rgba(0, 111, 63, 0.15);
+      border-top-color: #006f3f;
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+      pointer-events: none;
+    }
+    .titlebar .spinner.done { animation: none; border-color: #298754; background: #298754; }
+    .titlebar .spinner.error { animation: none; border-color: #e85d66; background: #e85d66; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title {
+      font-size: 13px; font-weight: 600; color: #1a3328;
+      flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      pointer-events: none;
+    }
+    .btn-close {
+      width: 36px; flex-shrink: 0; align-self: stretch;
+      border: none; border-radius: 0 var(--radius) 0 0;
+      background: transparent;
+      color: #7a9a88; font-size: 18px; line-height: 1;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      app-region: no-drag;
+    }
+    .btn-close:hover { background: rgba(232, 93, 102, 0.12); color: #c0392b; }
+    .body { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; flex: 1; min-height: 0; }
+    .phase { font-size: 11px; color: #5a7a68; line-height: 1.35; flex-shrink: 0; }
+    .track {
+      height: 6px; background: rgba(0, 111, 63, 0.1);
+      border-radius: 999px; overflow: hidden; flex-shrink: 0;
+    }
+    .fill {
+      height: 100%; width: 0%;
+      background: var(--brand);
+      border-radius: 999px; transition: width 0.35s ease;
+    }
+    .fill.indeterminate {
+      width: 40% !important;
+      animation: slide 1.2s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(280%); }
+    }
+    .meta { font-size: 10px; color: #7a9a88; text-align: right; flex-shrink: 0; }
+    .steps-wrap {
+      flex: 1; min-height: 0; overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px; background: var(--brand-soft);
+      padding: 6px 8px;
+    }
+    .steps-wrap.hidden { display: none; }
+    .step-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 11px; line-height: 1.4; padding: 4px 2px;
+      border-bottom: 1px solid rgba(0, 111, 63, 0.06);
+    }
+    .step-row:last-child { border-bottom: none; }
+    .step-badge {
+      flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+      font-size: 10px; display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 111, 63, 0.12); color: #006f3f;
+    }
+    .step-row.running .step-badge { background: #006f3f; color: #fff; }
+    .step-row.ok .step-badge { background: #298754; color: #fff; }
+    .step-row.fail .step-badge { background: #e85d66; color: #fff; }
+    .step-row.skipped .step-badge { background: #8a9a90; color: #fff; }
+    .step-row.skipped .step-text { color: #7a9a88; text-decoration: line-through; }
+    .step-row.clickable { cursor: pointer; border-radius: 6px; }
+    .step-row.clickable:hover { background: rgba(0, 111, 63, 0.08); }
+    .step-text { flex: 1; color: #1a3328; word-break: break-all; }
+    .step-detail { font-size: 10px; color: #7a9a88; margin-top: 2px; }
+    .result-panel { display: none; flex-direction: column; gap: 10px; flex-shrink: 0; }
+    .result-panel.visible { display: flex; }
+    .result-banner {
+      padding: 10px 12px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    }
+    .result-banner.ok { background: rgba(41, 135, 84, 0.12); color: #006f3f; }
+    .result-banner.fail { background: rgba(232, 93, 102, 0.12); color: #c0392b; }
+    .result-summary { font-size: 11px; color: #5a7a68; line-height: 1.5; }
+    .result-hint { font-size: 10px; color: #7a9a88; }
+    .ctrl-row { display: flex; gap: 6px; flex-shrink: 0; padding: 0 16px; }
+    .ctrl-row.hidden { display: none; }
+    .ctrl-row button {
+      flex: 1; padding: 6px 8px; border-radius: 8px; font-size: 11px;
+      cursor: pointer; border: 1px solid rgba(0, 111, 63, 0.2);
+      background: #fff; color: #1a3328;
+    }
+    .ctrl-row button.hidden { display: none; }
+    .ctrl-row button.danger { border-color: rgba(232, 93, 102, 0.35); color: #c0392b; }
+    .ctrl-row button.primary {
+      background: var(--brand);
+      color: #fff; border-color: transparent;
+    }
+    .ctrl-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .ctrl-row button:hover:not(:disabled) { filter: brightness(0.97); }
+    .pause-panel {
+      flex-shrink: 0; display: flex; flex-direction: column; gap: 6px;
+      padding: 0 16px; margin-top: -2px;
+    }
+    .pause-panel.hidden { display: none; }
+    .pause-hint { font-size: 10px; color: #8a6d1a; line-height: 1.4; }
+    .pause-insert { display: flex; gap: 6px; align-items: stretch; }
+    .pause-insert input {
+      flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;
+      border: 1px solid rgba(0, 111, 63, 0.22); font-size: 11px;
+      background: #fff; color: #1a3328;
+    }
+    .pause-insert input:focus {
+      outline: none; border-color: #006f3f;
+      box-shadow: 0 0 0 2px rgba(0, 111, 63, 0.12);
+    }
+    .pause-insert button {
+      flex-shrink: 0; padding: 6px 10px; border-radius: 8px; font-size: 11px;
+      cursor: pointer; border: none;
+      background: var(--brand); color: #fff;
+    }
+    .pause-insert button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .pause-attach {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .pause-attach button {
+      border: 1px solid rgba(0, 111, 63, 0.35); background: #fff; color: #006f3f;
+      font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+    }
+    .pause-attach button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .pause-attach-hint { font-size: 10px; color: #5a7a68; line-height: 1.3; flex: 1; min-width: 0; }
+    .confirm-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(20, 40, 30, 0.35);
+    }
+    .confirm-overlay.hidden { display: none; }
+    .confirm-card {
+      width: min(320px, 88vw); background: #fff; border-radius: 12px;
+      padding: 16px; box-shadow: 0 12px 32px rgba(0, 40, 20, 0.18);
+      border: 1px solid rgba(0, 111, 63, 0.12);
+    }
+    .confirm-card h3 { margin: 0 0 8px; font-size: 14px; color: #1a3328; }
+    .confirm-card p { margin: 0 0 14px; font-size: 12px; color: #5a7a68; line-height: 1.5; }
+    .confirm-actions { display: flex; gap: 8px; }
+    .confirm-actions button {
+      flex: 1; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+      cursor: pointer; border: 1px solid rgba(0, 111, 63, 0.2);
+      background: #fff; color: #1a3328;
+    }
+    .confirm-actions button.primary {
+      background: var(--brand);
+      color: #fff; border-color: transparent;
+    }
+    .confirm-actions button.danger {
+      background: #c0392b; color: #fff; border-color: transparent;
+    }
+    .actions { display: flex; gap: 8px; flex-shrink: 0; padding: 0 16px; }
+    .actions.hidden { display: none; }
+    .actions button {
+      flex: 1; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+      cursor: pointer; border: 1px solid rgba(0, 111, 63, 0.2);
+      background: #fff; color: #1a3328;
+    }
+    .actions button.primary {
+      background: var(--brand);
+      color: #fff; border-color: transparent;
+    }
+    .actions button:hover { filter: brightness(0.97); }
+    .running-only.hidden { display: none !important; }
+    .paused-tag {
+      display: none; font-size: 10px; color: #b8860b;
+      background: rgba(255, 193, 7, 0.15); padding: 2px 8px;
+      border-radius: 999px; flex-shrink: 0;
+      pointer-events: none;
+    }
+    .paused-tag.visible { display: inline-block; }
+    .stopping-tag {
+      display: none; font-size: 10px; color: #c0392b;
+      background: rgba(232, 93, 102, 0.15); padding: 2px 8px;
+      border-radius: 999px; flex-shrink: 0;
+      pointer-events: none;
+    }
+    .stopping-tag.visible { display: inline-block; }
+    .titlebar .spinner.paused { animation-play-state: paused; opacity: 0.55; }
+    .titlebar .spinner.stopping { animation: none; opacity: 0.45; border-top-color: rgba(192, 57, 43, 0.35); }
+    .artifacts-wrap {
+      flex-shrink: 0;
+      max-height: 140px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border: 1px solid rgba(0, 111, 63, 0.12);
+      border-radius: 8px;
+      background: rgba(248, 252, 249, 0.9);
+      padding: 6px 8px;
+      min-height: 52px;
+    }
+    .artifacts-wrap.hidden { display: none; }
+    .artifacts-head {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 10px; font-weight: 600; color: #5a7a68;
+    }
+    .ai-analyze-wrap {
+      flex-shrink: 0;
+      max-height: 180px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      border: 1px solid rgba(0, 111, 63, 0.16);
+      border-radius: 8px;
+      background: #fff;
+      padding: 6px 8px;
+      min-height: 0;
+      user-select: text;
+    }
+    .ai-analyze-wrap.visible { display: flex; }
+    .ai-analyze-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      font-size: 10px; font-weight: 600; color: #5a7a68;
+    }
+    .ai-analyze-copy {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 1px solid rgba(0, 111, 63, 0.2);
+      border-radius: 8px;
+      background: rgba(248, 252, 249, 0.95);
+      color: #5a7a68;
+      cursor: pointer;
+    }
+    .ai-analyze-copy:hover {
+      color: #006f3f;
+      border-color: #006f3f;
+      background: rgba(0, 111, 63, 0.08);
+    }
+    .ai-analyze-copy.copied {
+      color: #298754;
+      border-color: currentColor;
+    }
+    .ai-analyze-copy svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+    .ai-analyze-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      font-size: 11px;
+      line-height: 1.45;
+      color: #1a3328;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 2px 2px 4px;
+    }
+    .link-btn {
+      border: none; background: none; color: #006f3f; font-size: 10px;
+      cursor: pointer; padding: 0 4px; text-decoration: underline;
+    }
+    .artifacts-list {
+      flex: 1; min-height: 0; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .artifact-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10px; color: #1a3328; padding: 3px 4px;
+      border-radius: 6px; background: #fff;
+      border: 1px solid rgba(0, 111, 63, 0.08);
+    }
+    .artifact-row button {
+      margin-left: auto; flex-shrink: 0;
+      border: none; background: rgba(0, 111, 63, 0.08);
+      color: #006f3f; font-size: 10px; padding: 2px 6px;
+      border-radius: 4px; cursor: pointer;
+    }
+    .artifact-kind {
+      flex-shrink: 0; font-size: 9px; padding: 1px 5px;
+      border-radius: 999px; background: rgba(0, 111, 63, 0.1); color: #006f3f;
+    }
+    .artifact-name {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .artifacts-empty { font-size: 10px; color: #7a9a88; padding: 4px 2px; }
+    .download-bubble {
+      flex-shrink: 0;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--brand-soft);
+      box-shadow: none;
+    }
+    .download-bubble.visible { display: flex; }
+    .download-bubble.done {
+      border-color: rgba(41, 135, 84, 0.35);
+      background: rgba(41, 135, 84, 0.08);
+    }
+    .download-bubble.error {
+      border-color: rgba(232, 93, 102, 0.35);
+      background: rgba(232, 93, 102, 0.08);
+    }
+    .download-bubble-head {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 600; color: #1a3328;
+    }
+    .download-bubble-head .icon {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 111, 63, 0.12); color: #006f3f; font-size: 12px;
+      flex-shrink: 0;
+    }
+    .download-bubble.done .download-bubble-head .icon {
+      background: #298754; color: #fff;
+    }
+    .download-bubble.error .download-bubble-head .icon {
+      background: #e85d66; color: #fff;
+    }
+    .download-filename {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .download-meta { font-size: 10px; color: #5a7a68; }
+    .captcha-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 40, 20, 0.45);
+      padding: 12px;
+    }
+    .captcha-overlay.hidden { display: none !important; }
+    .captcha-card {
+      width: min(360px, 100%);
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 111, 63, 0.2);
+      box-shadow: 0 12px 36px rgba(0, 50, 30, 0.22);
+      padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .captcha-card h3 { margin: 0; font-size: 14px; color: #1a3328; }
+    .captcha-card .hint { margin: 0; font-size: 11px; color: #5a7a68; line-height: 1.45; }
+    .captcha-card img {
+      max-width: 100%; border-radius: 8px;
+      border: 1px solid rgba(0, 111, 63, 0.15); background: #f8f8f8;
+    }
+    .captcha-card input {
+      width: 100%; padding: 8px 10px; font-size: 16px; letter-spacing: 0.15em;
+      border: 1px solid rgba(0, 111, 63, 0.25); border-radius: 8px;
+    }
+    .captcha-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .captcha-actions button {
+      padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer;
+      border: 1px solid rgba(0, 111, 63, 0.2); background: #fff;
+    }
+    .captcha-actions button.primary {
+      background: var(--brand);
+      color: #fff; border-color: transparent;
+    }
+    .recipe-params-bar {
+      flex-shrink: 0;
+      border: 1px solid rgba(0, 111, 63, 0.14);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.72);
+      margin-bottom: 8px;
+      display: flex; flex-direction: column;
+      max-height: 140px;
+      position: relative;
+      z-index: 3;
+      transition: max-height 0.18s ease, box-shadow 0.18s ease;
+    }
+    .recipe-params-bar:not(.collapsed):hover {
+      max-height: none;
+      box-shadow: 0 10px 24px rgba(0, 40, 20, 0.12);
+    }
+    .recipe-params-bar:not(.collapsed):hover .recipe-params-body {
+      overflow-y: visible;
+    }
+    .recipe-params-bar.hidden { display: none !important; }
+    .recipe-params-bar.collapsed { max-height: none; }
+    .recipe-params-bar.collapsed .recipe-params-body { display: none; }
+    .recipe-params-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 6px 10px;
+    }
+    .recipe-params-head .params-toggle {
+      border: none; background: none; color: #5a7a68;
+      font-size: 11px; font-weight: 600; cursor: pointer; padding: 0;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .recipe-params-head .params-toggle .chev {
+      display: inline-block; transition: transform 0.15s ease; font-size: 10px;
+    }
+    .recipe-params-bar.collapsed .params-toggle .chev { transform: rotate(-90deg); }
+    .recipe-params-head .params-add {
+      border: 1px solid rgba(0, 111, 63, 0.2); background: #fff; color: #5a7a68;
+      font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+    }
+    .recipe-params-head .params-add.hidden { display: none; }
+    .recipe-params-head .params-add:disabled { opacity: 0.45; cursor: not-allowed; }
+    .recipe-params-body {
+      padding: 0 8px 8px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .recipe-param-row {
+      display: grid;
+      grid-template-columns: minmax(64px, 0.34fr) 1fr auto;
+      gap: 5px; align-items: center;
+      padding: 3px 5px;
+      border-radius: 6px;
+      background: rgba(0, 111, 63, 0.05);
+    }
+    .recipe-param-row .param-name-label {
+      font-size: 11px; font-weight: 600; color: #006f3f;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .recipe-param-row .param-value-label {
+      font-size: 11px; color: #1a3328;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .recipe-param-row .param-actions { display: flex; gap: 2px; }
+    .recipe-param-row .param-edit,
+    .recipe-param-row .param-del {
+      border: none; background: transparent; color: #8a9e94;
+      cursor: pointer; font-size: 13px; padding: 2px 4px; line-height: 1;
+    }
+    .recipe-param-row .param-edit:hover { color: #006f3f; }
+    .recipe-param-row .param-del:hover { color: #c0392b; }
+    .recipe-param-row .param-edit:disabled,
+    .recipe-param-row .param-del:disabled { opacity: 0.35; cursor: not-allowed; }
+    .recipe-params-hint {
+      font-size: 10px; color: #8a9e94; padding: 0 2px;
+    }
+    .edit-overlay {
+      position: fixed; inset: 0; z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 40, 20, 0.45); padding: 12px;
+    }
+    .edit-overlay.hidden { display: none !important; }
+    .edit-card {
+      width: min(360px, calc(100vw - 32px));
+      max-height: min(80vh, 420px);
+      box-sizing: border-box;
+      background: #fff; border-radius: 12px;
+      border: 1px solid rgba(0, 111, 63, 0.2);
+      box-shadow: 0 12px 36px rgba(0, 50, 30, 0.22);
+      padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+      overflow: hidden;
+    }
+    .edit-card h3 { margin: 0; font-size: 14px; color: #1a3328; flex-shrink: 0; }
+    .edit-field {
+      display: flex; flex-direction: column; gap: 4px;
+      min-width: 0; max-width: 100%;
+    }
+    .edit-field.hidden { display: none !important; }
+    .edit-field span { font-size: 11px; color: #5a7a68; font-weight: 600; }
+    .edit-field input {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px; font-size: 13px;
+      border: 1px solid rgba(0, 111, 63, 0.25); border-radius: 8px;
+    }
+    .edit-field input[readonly] {
+      color: #5a7a68;
+      background: #f2f6f4;
+      cursor: default;
+    }
+    .edit-actions { flex-shrink: 0; }
+    .edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .edit-actions button {
+      padding: 7px 12px; border-radius: 8px; font-size: 12px; cursor: pointer;
+      border: 1px solid rgba(0, 111, 63, 0.2); background: #fff;
+    }
+    .edit-actions button.primary {
+      background: var(--brand);
+      color: #fff; border-color: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="titlebar">
+      <div class="titlebar-drag" id="titlebarDrag" data-tauri-drag-region>
+        <div class="spinner" id="spinner"></div>
+        <div class="title" id="taskTitle">正在准备…</div>
+        <span class="paused-tag" id="pausedTag">已暂停</span>
+        <span class="stopping-tag" id="stoppingTag">正在终止</span>
+      </div>
+      <button type="button" class="btn-close" id="btnClose" title="关闭">×</button>
+    </div>
+
+    <div class="body">
+      <div id="recipeParamsBar" class="recipe-params-bar hidden" aria-label="指令参数">
+        <div class="recipe-params-head">
+          <button type="button" class="params-toggle" id="btnToggleRecipeParams" aria-expanded="true">
+            <span class="chev" aria-hidden="true">▾</span>
+            <span id="recipeParamsTitle">参数</span>
+          </button>
+          <button type="button" class="params-add hidden" id="btnAddRecipeParam">新增</button>
+        </div>
+        <div class="recipe-params-body" id="recipeParamsBody"></div>
+      </div>
+      <div class="phase running-only" id="phaseLabel">启动自动化环境</div>
+      <div class="track running-only" id="trackWrap"><div class="fill indeterminate" id="bar"></div></div>
+      <div class="meta running-only" id="meta">—</div>
+
+      <div class="download-bubble running-only" id="downloadBubble">
+        <div class="download-bubble-head">
+          <span class="icon" id="downloadIcon">↓</span>
+          <span class="download-filename" id="downloadFilename">正在等待下载…</span>
+        </div>
+        <div class="track"><div class="fill indeterminate" id="downloadBar"></div></div>
+        <div class="download-meta" id="downloadMeta">准备中</div>
+      </div>
+
+      <div class="steps-wrap running-only" id="stepsWrap">
+        <div id="stepsList"></div>
+      </div>
+
+      <div class="ai-analyze-wrap" id="aiAnalyzeWrap" aria-label="AI 分析">
+        <div class="ai-analyze-head">
+          <span id="aiAnalyzeTitle">AI 分析</span>
+          <button type="button" class="ai-analyze-copy" id="btnAiAnalyzeCopy" title="复制" aria-label="复制 AI 分析">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="ai-analyze-body" id="aiAnalyzeBody"></div>
+      </div>
+
+      <div class="artifacts-wrap" id="artifactsWrap">
+        <div class="artifacts-head">
+          <span>运行产物</span>
+          <button type="button" class="link-btn" id="btnOpenRunDir">打开目录</button>
+        </div>
+        <div class="artifacts-list" id="artifactsList">
+          <div class="artifacts-empty">执行后将在此显示截图、下载与文档（截图需菜谱写明「截图」）</div>
+        </div>
+      </div>
+
+      <div class="result-panel" id="resultPanel">
+        <div class="result-banner ok" id="resultBanner">任务已完成</div>
+        <div class="result-summary" id="resultSummary"></div>
+        <div class="result-hint">任务已结束</div>
+      </div>
+    </div>
+
+    <div class="ctrl-row running-only" id="ctrlRow">
+      <button type="button" id="btnPause">暂停</button>
+      <button type="button" class="primary hidden" id="btnResume">继续</button>
+      <button type="button" class="danger hidden" id="btnStop">停止</button>
+    </div>
+
+    <div class="pause-panel running-only hidden" id="pausePanel">
+      <div class="pause-hint">已暂停</div>
+      <div class="pause-insert">
+        <input type="text" id="insertInput" placeholder="插入指令" autocomplete="off" />
+        <button type="button" id="btnInsert">插入执行</button>
+      </div>
+      <div class="pause-attach">
+        <button type="button" id="btnUploadAttach">添加附件到 downloads</button>
+        <span class="pause-attach-hint" id="uploadAttachHint"></span>
+      </div>
+    </div>
+
+    <div class="actions hidden" id="actions">
+      <button type="button" id="btnOpenMain">打开主界面</button>
+      <button type="button" id="btnCloseWindow">关闭窗口</button>
+    </div>
+  </div>
+
+  <div id="confirmModal" class="confirm-overlay hidden" role="dialog" aria-labelledby="confirmTitle">
+    <div class="confirm-card">
+      <h3 id="confirmTitle">请确认</h3>
+      <p id="confirmMessage"></p>
+      <div class="confirm-actions">
+        <button type="button" id="btnConfirmCancel">取消</button>
+        <button type="button" class="primary" id="btnConfirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="editModal" class="edit-overlay hidden" role="dialog" aria-labelledby="editTitle">
+    <div class="edit-card">
+      <h3 id="editTitle">编辑</h3>
+      <label class="edit-field" id="editField1Wrap">
+        <span id="editLabel1">名称</span>
+        <input type="text" id="editInput1" autocomplete="off" />
+      </label>
+      <label class="edit-field hidden" id="editField2Wrap">
+        <span id="editLabel2">值</span>
+        <input type="text" id="editInput2" autocomplete="off" />
+      </label>
+      <div class="edit-actions">
+        <button type="button" id="btnEditCancel">取消</button>
+        <button type="button" class="primary" id="btnEditOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="captchaModal" class="captcha-overlay hidden" role="dialog" aria-labelledby="captchaModalTitle">
+    <div class="captcha-card">
+      <h3 id="captchaModalTitle">输入验证码</h3>
+      <p class="hint" id="captchaModalHint">请输入验证码</p>
+      <img id="captchaImg" alt="验证码" />
+      <div id="captchaImageFields">
+        <input type="text" id="captchaInput" autocomplete="off" placeholder="验证码" />
+      </div>
+      <div class="captcha-actions">
+        <button type="button" id="btnCaptchaCancel">取消</button>
+        <button type="button" class="primary" id="btnCaptchaSubmit">提交并继续</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="feishuQrModal" class="captcha-overlay hidden" role="dialog" aria-labelledby="feishuQrModalTitle">
+    <div class="captcha-card">
+      <h3 id="feishuQrModalTitle">飞书扫码登录</h3>
+      <p class="hint" id="feishuQrModalHint">请使用飞书扫码登录</p>
+      <img id="feishuQrImg" alt="飞书登录二维码" />
+      <div class="captcha-actions">
+        <button type="button" id="btnFeishuQrCancel">取消任务</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get("id") || "";
+
+    const taskTitle = document.getElementById("taskTitle");
+    const phaseLabel = document.getElementById("phaseLabel");
+    const bar = document.getElementById("bar");
+    const meta = document.getElementById("meta");
+    const spinner = document.getElementById("spinner");
+    const stepsList = document.getElementById("stepsList");
+    const stepsWrap = document.getElementById("stepsWrap");
+    const resultPanel = document.getElementById("resultPanel");
+    const resultBanner = document.getElementById("resultBanner");
+    const resultSummary = document.getElementById("resultSummary");
+    const actions = document.getElementById("actions");
+    const ctrlRow = document.getElementById("ctrlRow");
+    const pausedTag = document.getElementById("pausedTag");
+    const stoppingTag = document.getElementById("stoppingTag");
+    const btnPause = document.getElementById("btnPause");
+    const btnResume = document.getElementById("btnResume");
+    const btnStop = document.getElementById("btnStop");
+    const pausePanel = document.getElementById("pausePanel");
+    const insertInput = document.getElementById("insertInput");
+    const btnInsert = document.getElementById("btnInsert");
+    const btnUploadAttach = document.getElementById("btnUploadAttach");
+    const uploadAttachHint = document.getElementById("uploadAttachHint");
+    const confirmModal = document.getElementById("confirmModal");
+    const confirmTitle = document.getElementById("confirmTitle");
+    const confirmMessage = document.getElementById("confirmMessage");
+    const btnConfirmOk = document.getElementById("btnConfirmOk");
+    const btnConfirmCancel = document.getElementById("btnConfirmCancel");
+    const runningEls = document.querySelectorAll(".running-only");
+    const artifactsWrap = document.getElementById("artifactsWrap");
+    const artifactsList = document.getElementById("artifactsList");
+    const aiAnalyzeWrap = document.getElementById("aiAnalyzeWrap");
+    const aiAnalyzeBody = document.getElementById("aiAnalyzeBody");
+    const aiAnalyzeTitle = document.getElementById("aiAnalyzeTitle");
+    const btnAiAnalyzeCopy = document.getElementById("btnAiAnalyzeCopy");
+    const recipeParamsBar = document.getElementById("recipeParamsBar");
+    const recipeParamsBody = document.getElementById("recipeParamsBody");
+    const recipeParamsTitle = document.getElementById("recipeParamsTitle");
+    const btnToggleRecipeParams = document.getElementById("btnToggleRecipeParams");
+    const btnAddRecipeParam = document.getElementById("btnAddRecipeParam");
+    let currentRunDir = "";
+    let lastAiAnalyzeText = "";
+    /** @type {{name:string,value:string}[]} */
+    let recipeParamsList = [];
+    let paramsEditable = false;
+    let paramsDirty = false;
+    let paramsSaveTimer = null;
+    let paramsCollapsed = false;
+    const downloadBubble = document.getElementById("downloadBubble");
+    const downloadFilename = document.getElementById("downloadFilename");
+    const downloadBar = document.getElementById("downloadBar");
+    const downloadMeta = document.getElementById("downloadMeta");
+    let downloadIcon = document.getElementById("downloadIcon");
+    let downloadHideTimer = null;
+    let downloadUiPhase = "";
+    let confirmResolver = null;
+    let isPaused = false;
+    let isStopping = false;
+    let isQueued = false;
+
+    function applyDownloadProgress(p) {
+      if (p.taskId && taskId && p.taskId !== taskId) return;
+      if (p.visible === false || p.phase === "hidden") {
+        downloadBubble.classList.remove("visible", "done", "error");
+        downloadUiPhase = "";
+        return;
+      }
+      const phase = p.phase || "waiting";
+      const name = p.filename || p.message || "下载中…";
+      downloadBubble.classList.add("visible");
+      if (phase !== downloadUiPhase) {
+        downloadUiPhase = phase;
+        downloadBubble.classList.toggle("done", phase === "done");
+        downloadBubble.classList.toggle("error", phase === "error");
+        if (phase === "done") downloadIcon.textContent = "✓";
+        else if (phase === "error") downloadIcon.textContent = "!";
+        else if (phase === "fetching") downloadIcon.textContent = "↓";
+        else downloadIcon.textContent = "…";
+      }
+      if (downloadFilename.textContent !== name) downloadFilename.textContent = name;
+      const meta = p.message || "";
+      if (downloadMeta.textContent !== meta) downloadMeta.textContent = meta;
+      const wantIndet = !!p.indeterminate;
+      const hasIndet = downloadBar.classList.contains("indeterminate");
+      if (wantIndet !== hasIndet) {
+        downloadBar.classList.toggle("indeterminate", wantIndet);
+      }
+      if (!wantIndet) {
+        const w = (p.percent ?? 0) + "%";
+        if (downloadBar.style.width !== w) downloadBar.style.width = w;
+      }
+      if (phase === "done") {
+        clearTimeout(downloadHideTimer);
+        downloadHideTimer = setTimeout(() => {
+          downloadBubble.classList.remove("visible", "done", "error");
+          downloadUiPhase = "";
+        }, 3200);
+      }
+    }
+
+    const kindLabel = { screenshot: "截图", document: "文档", download: "下载", other: "文件" };
+
+    function collectParamsFromUi() {
+      return recipeParamsList
+        .map((p) => ({ name: String(p.name || "").trim(), value: String(p.value ?? "") }))
+        .filter((p) => p.name);
+    }
+
+    function updateParamsTitle() {
+      const n = recipeParamsList.length;
+      recipeParamsTitle.textContent = n > 0 ? `参数（${n}）` : "参数";
+    }
+
+    let editResolver = null;
+    function showEditDialog({ title, fields }) {
+      return new Promise((resolve) => {
+        editResolver = resolve;
+        document.getElementById("editTitle").textContent = title || "编辑";
+        const f1 = fields[0] || { label: "名称", value: "" };
+        const f2 = fields[1] || null;
+        document.getElementById("editLabel1").textContent = f1.label || "名称";
+        const input1 = document.getElementById("editInput1");
+        input1.value = f1.value ?? "";
+        input1.readOnly = !!f1.readonly;
+        const wrap2 = document.getElementById("editField2Wrap");
+        const input2 = document.getElementById("editInput2");
+        if (f2) {
+          wrap2.classList.remove("hidden");
+          document.getElementById("editLabel2").textContent = f2.label || "值";
+          input2.value = f2.value ?? "";
+          input2.readOnly = !!f2.readonly;
+        } else {
+          wrap2.classList.add("hidden");
+          input2.value = "";
+          input2.readOnly = false;
+        }
+        document.getElementById("editModal").classList.remove("hidden");
+        const focusEl = f1.readonly && f2 && !f2.readonly ? input2 : input1;
+        focusEl.focus();
+        if (!focusEl.readOnly) focusEl.select();
+      });
+    }
+    function finishEdit(value) {
+      document.getElementById("editModal").classList.add("hidden");
+      const r = editResolver;
+      editResolver = null;
+      if (r) r(value);
+    }
+    document.getElementById("btnEditCancel").onclick = () => finishEdit(null);
+    document.getElementById("btnEditOk").onclick = () => {
+      const v1 = document.getElementById("editInput1").value;
+      if (document.getElementById("editField2Wrap").classList.contains("hidden")) {
+        finishEdit([v1]);
+      } else {
+        finishEdit([v1, document.getElementById("editInput2").value]);
+      }
+    };
+
+    function renderRecipeParamsBar() {
+      updateParamsTitle();
+      if (!recipeParamsList.length && !paramsEditable) {
+        recipeParamsBar.classList.add("hidden");
+        return;
+      }
+      recipeParamsBar.classList.remove("hidden");
+      recipeParamsBar.classList.toggle("collapsed", paramsCollapsed);
+      btnToggleRecipeParams.setAttribute("aria-expanded", paramsCollapsed ? "false" : "true");
+      btnAddRecipeParam.classList.toggle("hidden", !paramsEditable);
+      btnAddRecipeParam.disabled = !paramsEditable;
+      if (!recipeParamsList.length) {
+        recipeParamsBody.innerHTML = paramsEditable
+          ? '<div class="recipe-params-hint">暂无参数</div>'
+          : "";
+        return;
+      }
+      const canAct = paramsEditable;
+      const hint = canAct
+        ? '<div class="recipe-params-hint">暂停中可编辑</div>'
+        : '<div class="recipe-params-hint">运行中只读</div>';
+      recipeParamsBody.innerHTML =
+        hint +
+        recipeParamsList
+          .map(
+            (p, i) => `<div class="recipe-param-row" data-idx="${i}">
+            <span class="param-name-label">${escapeHtml(p.name || "")}</span>
+            <span class="param-value-label">${escapeHtml(p.value || "")}</span>
+            <span class="param-actions">
+              <button type="button" class="param-edit" data-idx="${i}" title="编辑" ${canAct ? "" : "disabled"}>✎</button>
+              <button type="button" class="param-del" data-idx="${i}" title="删除" ${canAct ? "" : "disabled"}>×</button>
+            </span>
+          </div>`
+          )
+          .join("");
+      if (!canAct) return;
+      recipeParamsBody.querySelectorAll(".param-edit").forEach((btn) => {
+        btn.onclick = () => void openParamEditModal(Number(btn.getAttribute("data-idx")));
+      });
+      recipeParamsBody.querySelectorAll(".param-del").forEach((btn) => {
+        btn.onclick = () => void deleteParamAt(Number(btn.getAttribute("data-idx")));
+      });
+    }
+
+    async function openParamEditModal(idx) {
+      if (!paramsEditable) return;
+      const isNew = idx == null || idx < 0 || idx >= recipeParamsList.length;
+      const cur = isNew ? { name: "", value: "" } : recipeParamsList[idx];
+      const result = await showEditDialog({
+        title: isNew ? "新增参数" : "编辑参数",
+        fields: [
+          { label: "名称", value: cur.name || "", readonly: !isNew },
+          { label: "值", value: cur.value || "" },
+        ],
+      });
+      if (!result) return;
+      const name = isNew
+        ? String(result[0] || "").trim()
+        : String(cur.name || "").trim();
+      const value = String(result[1] ?? "");
+      if (!name) {
+        alert("参数名称不能为空");
+        return;
+      }
+      if (isNew) {
+        const dup = recipeParamsList.findIndex((p) => p.name === name);
+        if (dup >= 0) {
+          alert(`参数「${name}」已存在`);
+          return;
+        }
+        recipeParamsList.push({ name, value });
+      } else {
+        recipeParamsList[idx] = { name, value };
+      }
+      paramsDirty = true;
+      renderRecipeParamsBar();
+      await saveParamsNow();
+    }
+
+    async function deleteParamAt(idx) {
+      if (!paramsEditable) return;
+      const p = recipeParamsList[idx];
+      if (!p) return;
+      const ok = await showConfirm("删除参数", `确定删除参数「${p.name}」吗？`, "删除", true);
+      if (!ok) return;
+      recipeParamsList = recipeParamsList.filter((_, i) => i !== idx);
+      paramsDirty = true;
+      renderRecipeParamsBar();
+      await saveParamsNow();
+    }
+
+    function setRecipeParamsFromPayload(list, editable) {
+      const next = (list || [])
+        .map((p) => ({ name: String(p.name || "").trim(), value: String(p.value ?? "") }))
+        .filter((p) => p.name);
+      paramsEditable = !!editable;
+      if (!paramsDirty) recipeParamsList = next;
+      renderRecipeParamsBar();
+    }
+
+    async function saveParamsNow() {
+      if (!taskId) return;
+      const params = collectParamsFromUi();
+      recipeParamsList = params;
+      try {
+        const { invoke } = window.__TAURI__.core;
+        await invoke("task_set_recipe_params_cmd", { taskId, params });
+        paramsDirty = false;
+      } catch (err) {
+        alert(String(err?.message || err || "保存参数失败"));
+      }
+    }
+
+    btnToggleRecipeParams.onclick = () => {
+      paramsCollapsed = !paramsCollapsed;
+      renderRecipeParamsBar();
+    };
+    btnAddRecipeParam.onclick = () => {
+      if (!paramsEditable) return;
+      paramsCollapsed = false;
+      void openParamEditModal(-1);
+    };
+
+    function renderArtifacts(runDir, artifacts) {
+      if (runDir) currentRunDir = runDir;
+      const list = artifacts || [];
+      if (!list.length) {
+        artifactsList.innerHTML = '<div class="artifacts-empty">暂无产物（下载在 downloads/）</div>';
+        return;
+      }
+      artifactsList.innerHTML = list.map((a) => {
+        const k = kindLabel[a.kind] || a.kind || "文件";
+        return `<div class="artifact-row">
+          <span class="artifact-kind">${escapeHtml(k)}</span>
+          <span class="artifact-name" title="${escapeHtml(a.path || "")}">${escapeHtml(a.name || "")}</span>
+          <button type="button" data-path="${escapeHtml(a.path || "")}">打开</button>
+        </div>`;
+      }).join("");
+      artifactsList.querySelectorAll("button[data-path]").forEach((btn) => {
+        btn.onclick = async () => {
+          const path = btn.getAttribute("data-path");
+          if (!path) return;
+          const { invoke } = window.__TAURI__.core;
+          try {
+            await invoke("open_artifact_file_cmd", { path });
+          } catch (e) {
+            console.error(e);
+          }
+        };
+      });
+    }
+
+    function setRunningMode(on) {
+      runningEls.forEach((el) => el.classList.toggle("hidden", !on));
+      resultPanel.classList.toggle("visible", !on);
+      actions.classList.toggle("hidden", on);
+      ctrlRow.classList.toggle("hidden", !on);
+      if (!on) pausePanel.classList.add("hidden");
+      artifactsWrap.classList.remove("hidden");
+    }
+
+    function updateControlUi(paused, stopping, queued) {
+      isPaused = !!paused;
+      isStopping = !!stopping;
+      isQueued = !!queued;
+      pausedTag.classList.toggle("visible", isPaused && !isStopping);
+      stoppingTag.classList.toggle("visible", isStopping);
+      spinner.classList.toggle("paused", isPaused && !isStopping);
+      spinner.classList.toggle("stopping", isStopping);
+      const showPause = !isPaused && !isStopping;
+      const showPausedActions = isPaused && !isStopping;
+      btnPause.classList.toggle("hidden", !showPause);
+      btnResume.classList.toggle("hidden", !showPausedActions);
+      btnStop.classList.toggle("hidden", !showPausedActions);
+      btnPause.disabled = isQueued || isStopping;
+      btnResume.disabled = isQueued || isStopping;
+      btnStop.disabled = isQueued || isStopping;
+      pausePanel.classList.toggle("hidden", !showPausedActions || isQueued);
+      btnInsert.disabled = isQueued || isStopping || !isPaused;
+      insertInput.disabled = isQueued || isStopping || !isPaused;
+      if (btnUploadAttach) btnUploadAttach.disabled = isQueued || isStopping || !isPaused;
+      refreshStepClickables();
+    }
+
+    function showConfirm(title, message, okLabel, danger) {
+      return new Promise((resolve) => {
+        confirmResolver = resolve;
+        confirmTitle.textContent = title || "请确认";
+        confirmMessage.textContent = message || "";
+        btnConfirmOk.textContent = okLabel || "确定";
+        btnConfirmOk.classList.toggle("danger", !!danger);
+        btnConfirmOk.classList.toggle("primary", !danger);
+        confirmModal.classList.remove("hidden");
+        btnConfirmOk.focus();
+      });
+    }
+
+    function closeConfirm(result) {
+      confirmModal.classList.add("hidden");
+      const r = confirmResolver;
+      confirmResolver = null;
+      if (r) r(!!result);
+    }
+
+    btnConfirmCancel.onclick = () => closeConfirm(false);
+    btnConfirmOk.onclick = () => closeConfirm(true);
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (confirmModal.classList.contains("hidden")) return;
+      e.preventDefault();
+      closeConfirm(false);
+    });
+
+    function updateMetaFromState(p) {
+      const total = Number(p?.total) || 0;
+      const current = Number(p?.current) || 0;
+      if (isStopping) {
+        meta.textContent = total > 0 ? `正在终止 · 步骤 ${current} / ${total}` : "正在终止…";
+        return;
+      }
+      if (p?.indeterminate || total <= 0) {
+        if (isQueued) meta.textContent = "排队中…";
+        else if (isPaused) meta.textContent = "已暂停";
+        else meta.textContent = p?.phase === "chrome" ? "正在启动浏览器…" : "准备中";
+      } else {
+        meta.textContent = isPaused ? `已暂停 · 步骤 ${current} / ${total}` : `步骤 ${current} / ${total}`;
+      }
+    }
+
+    function stepStatusFromRow(row) {
+      if (row.classList.contains("ok")) return "ok";
+      if (row.classList.contains("fail")) return "fail";
+      if (row.classList.contains("running")) return "running";
+      if (row.classList.contains("skipped")) return "skipped";
+      return "pending";
+    }
+
+    function refreshStepClickables() {
+      stepsList.querySelectorAll(".step-row").forEach((row) => {
+        row.classList.remove("clickable");
+        row.removeAttribute("title");
+        if (!isPaused || isStopping || isQueued) return;
+        const status = stepStatusFromRow(row);
+        if (status === "ok" || status === "fail" || status === "skipped") {
+          row.classList.add("clickable");
+          row.title = "点击回退到此步骤（需确认）";
+        } else if (status === "pending") {
+          row.classList.add("clickable");
+          row.title = "点击跳过此步骤（需确认）";
+        }
+      });
+    }
+
+    function renderSteps(steps) {
+      if (!steps || !steps.length) {
+        stepsList.innerHTML = '<div class="step-text" style="color:#7a9a88">等待步骤…</div>';
+        return;
+      }
+      stepsList.innerHTML = steps.map((s) => {
+        const cls = s.status || "pending";
+        const icon = cls === "ok" ? "✓"
+          : cls === "fail" ? "!"
+          : cls === "running" ? "…"
+          : cls === "skipped" ? "–"
+          : s.index;
+        const detail = s.detail ? `<div class="step-detail">${escapeHtml(s.detail)}</div>` : "";
+        return `<div class="step-row ${cls}" data-step-index="${s.index}">
+          <div class="step-badge">${icon}</div>
+          <div class="step-text">${escapeHtml(s.label || "")}${detail}</div>
+        </div>`;
+      }).join("");
+      refreshStepClickables();
+      scrollStepsToActive();
+    }
+
+    function scrollStepsToActive() {
+      const rows = stepsList.querySelectorAll(".step-row");
+      if (!rows.length) return;
+      let target = stepsList.querySelector(".step-row.running");
+      if (!target) {
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i].classList.contains("fail")) {
+            target = rows[i];
+            break;
+          }
+        }
+      }
+      if (!target) {
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i].classList.contains("ok")) {
+            target = rows[i];
+            break;
+          }
+        }
+      }
+      if (!target) target = rows[0];
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ block: "nearest", behavior: "instant" });
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    let lastProgress = null;
+
+    function applyProgress(p) {
+      if (p.task_id && taskId && p.task_id !== taskId) return;
+
+      if (p.task_name) taskTitle.textContent = p.task_name;
+
+      if (p.phase === "result") {
+        isStopping = false;
+        setRunningMode(false);
+        spinner.classList.remove("error", "paused", "stopping");
+        spinner.classList.add(p.success ? "done" : "error");
+        resultBanner.textContent = p.success ? "任务已完成" : "任务未完全成功";
+        resultBanner.className = "result-banner " + (p.success ? "ok" : "fail");
+        resultSummary.textContent = p.summary || p.label || "";
+        if (p.steps) renderSteps(p.steps);
+        if (p.run_dir || p.artifacts) renderArtifacts(p.run_dir, p.artifacts);
+        setRecipeParamsFromPayload(p.recipe_params || p.recipeParams || [], false);
+        return;
+      }
+
+      lastProgress = p;
+      setRunningMode(true);
+      spinner.classList.remove("done", "error");
+      updateControlUi(p.paused, p.stopping, p.queued);
+      const canEditParams = !!p.paused && !p.stopping && !p.queued;
+      if (canEditParams && paramsDirty) {
+        // 本地有未保存编辑时，只切换可编辑态，不覆盖输入
+        paramsEditable = true;
+        renderRecipeParamsBar();
+      } else {
+        setRecipeParamsFromPayload(p.recipe_params || p.recipeParams || [], canEditParams);
+      }
+      const label = p.stopping ? "正在终止…" : (p.paused ? "已暂停" : (p.label || ""));
+      if (label) phaseLabel.textContent = label;
+      const total = Number(p.total) || 0;
+      const current = Number(p.current) || 0;
+      if (p.indeterminate || total <= 0) {
+        bar.classList.add("indeterminate");
+      } else {
+        bar.classList.remove("indeterminate");
+        const pct = Math.min(100, Math.round((current / total) * 100));
+        bar.style.width = pct + "%";
+      }
+      updateMetaFromState(p);
+      if (p.steps) renderSteps(p.steps);
+      if (p.run_dir || p.artifacts) renderArtifacts(p.run_dir, p.artifacts);
+    }
+
+    function showAiAnalyzeResult(content, documentName) {
+      const text = String(content || "").trim();
+      if (!text || !aiAnalyzeWrap || !aiAnalyzeBody) return;
+      lastAiAnalyzeText = text;
+      aiAnalyzeBody.textContent = text;
+      if (aiAnalyzeTitle) {
+        aiAnalyzeTitle.textContent = documentName
+          ? `AI 分析 · ${documentName}`
+          : "AI 分析";
+      }
+      aiAnalyzeWrap.classList.add("visible");
+      requestAnimationFrame(() => {
+        aiAnalyzeBody.scrollTop = 0;
+      });
+    }
+
+    async function copyAiAnalyzeText() {
+      const text = lastAiAnalyzeText || String(aiAnalyzeBody?.textContent || "").trim();
+      if (!text) return;
+      let ok = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          ok = true;
+        }
+      } catch (_) {}
+      if (!ok) {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          ok = document.execCommand("copy");
+          ta.remove();
+        } catch (_) {}
+      }
+      if (!btnAiAnalyzeCopy) return;
+      const prev = btnAiAnalyzeCopy.getAttribute("title") || "复制";
+      btnAiAnalyzeCopy.classList.toggle("copied", ok);
+      btnAiAnalyzeCopy.setAttribute("title", ok ? "已复制" : "复制失败");
+      setTimeout(() => {
+        btnAiAnalyzeCopy.classList.remove("copied");
+        btnAiAnalyzeCopy.setAttribute("title", prev === "已复制" || prev === "复制失败" ? "复制" : prev);
+      }, 1400);
+    }
+
+    btnAiAnalyzeCopy?.addEventListener("click", () => {
+      void copyAiAnalyzeText();
+    });
+
+    document.getElementById("btnOpenRunDir").onclick = async () => {
+      if (!currentRunDir) return;
+      const { invoke } = window.__TAURI__.core;
+      await invoke("open_run_artifacts_dir_cmd", { runDir: currentRunDir });
+    };
+
+    async function invokeTask(cmd) {
+      if (!taskId) return;
+      const { invoke } = window.__TAURI__.core;
+      await invoke(cmd, { taskId });
+    }
+
+    function applyPauseOptimistic() {
+      updateControlUi(true, false, isQueued);
+      phaseLabel.textContent = "已暂停";
+      updateMetaFromState(lastProgress || {});
+    }
+
+    async function flushParamsBeforeResume() {
+      if (!paramsDirty || !paramsEditable) return;
+      clearTimeout(paramsSaveTimer);
+      await saveParamsNow();
+    }
+
+    function applyResumeOptimistic() {
+      updateControlUi(false, false, isQueued);
+      if (lastProgress?.label) phaseLabel.textContent = lastProgress.label;
+      updateMetaFromState(lastProgress || {});
+    }
+
+    function applyStopOptimistic() {
+      updateControlUi(false, true, isQueued);
+      phaseLabel.textContent = "正在终止…";
+      updateMetaFromState(lastProgress || {});
+    }
+
+    async function closeTaskWindow() {
+      const { invoke } = window.__TAURI__.core;
+      await invoke("task_window_close_cmd");
+    }
+
+    btnPause.onclick = () => {
+      applyPauseOptimistic();
+      void invokeTask("task_pause_cmd");
+    };
+    btnResume.onclick = async () => {
+      await flushParamsBeforeResume();
+      applyResumeOptimistic();
+      void invokeTask("task_resume_cmd");
+    };
+    btnStop.onclick = () => {
+      applyStopOptimistic();
+      void invokeTask("task_stop_cmd");
+    };
+
+    async function insertSteps() {
+      if (!taskId || !isPaused || isStopping) return;
+      const content = (insertInput.value || "").trim();
+      if (!content) return;
+      btnInsert.disabled = true;
+      try {
+        const { invoke } = window.__TAURI__.core;
+        await invoke("task_insert_steps_cmd", { taskId, content });
+        insertInput.value = "";
+      } catch (e) {
+        alert(String(e?.message || e || "插入失败"));
+      } finally {
+        btnInsert.disabled = !isPaused || isStopping || isQueued;
+      }
+    }
+
+    btnInsert.onclick = () => { void insertSteps(); };
+
+    btnUploadAttach.onclick = async () => {
+      if (!taskId || !isPaused) return;
+      btnUploadAttach.disabled = true;
+      uploadAttachHint.textContent = "选择文件…";
+      try {
+        const { invoke } = window.__TAURI__.core;
+        const res = await invoke("upload_run_attachments_cmd", {
+          taskId,
+          runDir: currentRunDir || null,
+          chatSessionId: null,
+        });
+        const added = (res && res.added) || [];
+        if (res?.runDir) currentRunDir = res.runDir;
+        if (res?.artifacts) renderArtifacts(res.runDir || currentRunDir, res.artifacts);
+        uploadAttachHint.textContent = added.length
+          ? `已添加 ${added.length} 个：${added.join("、")}`
+          : "已添加";
+      } catch (e) {
+        const msg = String(e || "");
+        uploadAttachHint.textContent = msg.includes("已取消") ? "" : ("失败: " + msg);
+      } finally {
+        btnUploadAttach.disabled = !isPaused || isStopping || isQueued;
+      }
+    };
+    insertInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void insertSteps();
+      }
+    });
+
+    stepsList.addEventListener("click", async (e) => {
+      if (!isPaused || isStopping || isQueued) return;
+      const row = e.target.closest(".step-row");
+      if (!row || !row.classList.contains("clickable")) return;
+      const stepIndex = Number(row.getAttribute("data-step-index"));
+      if (!stepIndex) return;
+      const status = stepStatusFromRow(row);
+      const { invoke } = window.__TAURI__.core;
+      try {
+        if (status === "ok" || status === "fail" || status === "skipped") {
+          const ok = await showConfirm(
+            "回退步骤",
+            `确定回退到第 ${stepIndex} 步？将从此步骤重新执行，后续进度会重置为待执行。`,
+            "回退",
+            true
+          );
+          if (!ok) return;
+          await invoke("task_rollback_step_cmd", { taskId, stepIndex });
+        } else if (status === "pending") {
+          const ok = await showConfirm(
+            "跳过步骤",
+            `确定跳过第 ${stepIndex} 步？继续执行时将直接略过该步骤。`,
+            "跳过",
+            false
+          );
+          if (!ok) return;
+          await invoke("task_skip_step_cmd", { taskId, stepIndex });
+        }
+      } catch (err) {
+        alert(String(err?.message || err || "操作失败"));
+      }
+    });
+
+    document.getElementById("btnClose").onclick = closeTaskWindow;
+    document.getElementById("btnCloseWindow").onclick = closeTaskWindow;
+    document.getElementById("btnOpenMain").onclick = async () => {
+      const { invoke } = window.__TAURI__.core;
+      await invoke("task_result_open_main_cmd");
+    };
+
+    (function setupWindowDrag() {
+      const dragEl = document.getElementById("titlebarDrag");
+      if (!dragEl) return;
+
+      dragEl.addEventListener("mousedown", async (e) => {
+        if (e.button !== 0) return;
+        const t = e.target;
+        if (t.closest && t.closest("button, a, input, select, textarea")) return;
+        try {
+          const win = window.__TAURI__.webviewWindow.getCurrentWebviewWindow();
+          await win.startDragging();
+        } catch (_) {
+          /* data-tauri-drag-region 作为后备 */
+        }
+      });
+    })();
+
+    (async () => {
+      const { listen } = window.__TAURI__.event;
+      await listen("task-progress-update", (e) => applyProgress(e.payload || {}));
+      await listen("download-progress-update", (e) => applyDownloadProgress(e.payload || {}));
+      await listen("run-artifacts-update", (e) => {
+        const p = e.payload || {};
+        if (p.taskId && taskId && p.taskId !== taskId) return;
+        renderArtifacts(p.runDir, p.artifacts);
+      });
+      await listen("ai-analyze-result", (e) => {
+        const p = e.payload || {};
+        const tid = p.taskId || p.task_id || "";
+        if (taskId && tid && tid !== taskId) return;
+        showAiAnalyzeResult(p.content, p.document || p.documentName || "");
+      });
+      setupCaptchaModal(taskId);
+      setupFeishuQrModal(taskId);
+    })();
+
+    function setupFeishuQrModal(expectedTaskId) {
+      const modal = document.getElementById("feishuQrModal");
+      const img = document.getElementById("feishuQrImg");
+      const hint = document.getElementById("feishuQrModalHint");
+      if (!modal || !img) return;
+      let activePromptId = null;
+      const { invoke } = window.__TAURI__.core;
+      const { listen } = window.__TAURI__.event;
+
+      function hideFeishuQrModal() {
+        modal.classList.add("hidden");
+        activePromptId = null;
+      }
+
+      listen("feishu-qr-required", (e) => {
+        const p = e.payload || {};
+        const tid = p.taskId || p.task_id || "";
+        if (expectedTaskId && tid && tid !== expectedTaskId) return;
+        activePromptId = p.promptId || p.prompt_id || "";
+        if (p.imageBase64 || p.image_base64) {
+          img.src = "data:image/png;base64," + (p.imageBase64 || p.image_base64);
+        }
+        if (p.hint && hint) hint.textContent = p.hint;
+        modal.classList.remove("hidden");
+      });
+
+      listen("feishu-qr-resolved", (e) => {
+        const p = e.payload || {};
+        const pid = p.promptId || p.prompt_id;
+        if (!activePromptId || pid === activePromptId) hideFeishuQrModal();
+      });
+
+      document.getElementById("btnFeishuQrCancel").onclick = async () => {
+        hideFeishuQrModal();
+        if (expectedTaskId) {
+          try { await invoke("task_stop_cmd", { taskId: expectedTaskId }); } catch (_) {}
+        }
+      };
+    }
+
+    function setupCaptchaModal(expectedTaskId) {
+      const modal = document.getElementById("captchaModal");
+      const img = document.getElementById("captchaImg");
+      const input = document.getElementById("captchaInput");
+      const hint = document.getElementById("captchaModalHint");
+      const title = document.getElementById("captchaModalTitle");
+      const imageFields = document.getElementById("captchaImageFields");
+      const submitBtn = document.getElementById("btnCaptchaSubmit");
+      if (!modal || !img || !input) return;
+      let activePromptId = null;
+      let activeKind = "image";
+      const { invoke } = window.__TAURI__.core;
+      const { listen } = window.__TAURI__.event;
+
+      function hideCaptchaModal() {
+        modal.classList.add("hidden");
+        activePromptId = null;
+        activeKind = "image";
+        input.value = "";
+      }
+
+      function applyCaptchaKind(kind) {
+        activeKind = kind === "slider" || kind === "human" ? kind : "image";
+        const isAssist = activeKind === "slider" || activeKind === "human";
+        if (title) {
+          title.textContent =
+            activeKind === "human"
+              ? "人机验证"
+              : activeKind === "slider"
+                ? "完成滑块验证"
+                : "输入验证码";
+        }
+        const showAssistImg = isAssist && img.src && img.src.startsWith("data:");
+        img.classList.toggle("hidden", isAssist && !showAssistImg);
+        if (imageFields) imageFields.classList.toggle("hidden", isAssist);
+        if (submitBtn) submitBtn.textContent = isAssist ? "我已完成" : "提交并继续";
+      }
+
+      listen("captcha-required", (e) => {
+        const p = e.payload || {};
+        const tid = p.taskId || p.task_id || "";
+        if (expectedTaskId && tid && tid !== expectedTaskId) return;
+        activePromptId = p.promptId || p.prompt_id || "";
+        const b64 = p.imageBase64 || p.image_base64 || "";
+        if (b64) {
+          img.src = "data:image/png;base64," + b64;
+        } else {
+          img.removeAttribute("src");
+        }
+        applyCaptchaKind(p.kind || "image");
+        if (p.hint && hint) hint.textContent = p.hint;
+        input.value = "";
+        modal.classList.remove("hidden");
+        if (activeKind === "image") setTimeout(() => input.focus(), 80);
+      });
+
+      listen("captcha-resolved", (e) => {
+        const p = e.payload || {};
+        const pid = p.promptId || p.prompt_id;
+        if (!activePromptId || pid === activePromptId) hideCaptchaModal();
+      });
+
+      async function submitCaptcha() {
+        if (!activePromptId) return;
+        const code =
+          activeKind === "slider" || activeKind === "human" ? "done" : input.value.trim();
+        if (activeKind !== "slider" && activeKind !== "human" && !code) return;
+        try {
+          await invoke("captcha_submit_cmd", { promptId: activePromptId, code });
+        } catch (err) {
+          if (hint) hint.textContent = "提交失败: " + err;
+        }
+      }
+
+      document.getElementById("btnCaptchaSubmit").onclick = () => void submitCaptcha();
+      document.getElementById("btnCaptchaCancel").onclick = async () => {
+        if (activePromptId) {
+          try { await invoke("captcha_cancel_cmd", { promptId: activePromptId }); } catch (_) {}
+        }
+        hideCaptchaModal();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); void submitCaptcha(); }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "default",
+  "description": "Default capabilities",
+    "windows": ["main", "task-*", "md-viewer", "schedule-floater"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-internal-toggle-devtools",
+    "core:window:allow-start-dragging",
+    "shell:allow-open"
+  ]
+}

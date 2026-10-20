@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rust-lite:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build webclaw-lite
+        run: cargo build --release --bin webclaw-lite --manifest-path runtime/Cargo.toml
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webclaw-lite-windows-x64
+          path: target/release/webclaw-lite.exe
+
+  dsh-plugin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/dsh-plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install
+      - run: npm run build

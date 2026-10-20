@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文档预览</title>
+  <style>
+    :root {
+      --brand: #006f3f;
+      --brand-soft: #e8f5ec;
+      --text: #1a3328;
+      --muted: #5a7a68;
+      --border: #d7e3db;
+      --bg: #f4f6f5;
+      --card: #ffffff;
+      --danger: #c0392b;
+      --font-ui: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-ui);
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      flex-shrink: 0;
+    }
+    header .title {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.95rem;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    header .meta {
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+    header button {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 0.82rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    header button:hover { background: #f7faf8; border-color: #b7cfc2; }
+    header button.primary {
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand);
+    }
+    header button.primary:hover { background: #298754; }
+    header button.danger {
+      color: var(--danger);
+      border-color: rgba(192, 57, 43, 0.28);
+      background: rgba(192, 57, 43, 0.04);
+    }
+    #status {
+      padding: 8px 16px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      border-bottom: 1px solid #e6eee9;
+      background: #fafcfb;
+    }
+    #status.error { color: var(--danger); }
+    main {
+      flex: 1;
+      overflow: auto;
+      padding: 18px 20px 36px;
+      min-height: 0;
+    }
+    .doc {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px 28px;
+      box-shadow: 0 2px 8px rgba(26, 51, 40, 0.06);
+      line-height: 1.65;
+    }
+    .doc h1 { font-size: 1.4rem; margin: 0 0 12px; color: var(--brand); font-weight: 650; }
+    .doc h2 { font-size: 1.12rem; margin: 22px 0 10px; color: var(--text); }
+    .doc h3 { font-size: 1rem; margin: 18px 0 8px; }
+    .doc p, .doc ul, .doc blockquote { margin: 0 0 12px; }
+    .doc ul { padding-left: 1.3em; }
+    .doc li { margin: 4px 0; }
+    .doc blockquote {
+      border-left: 3px solid var(--brand);
+      padding: 8px 12px;
+      background: var(--brand-soft);
+      color: var(--muted);
+      border-radius: 0 8px 8px 0;
+    }
+    .doc code {
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--brand-soft);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 14px 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+    }
+    table {
+      border-collapse: collapse;
+      width: max-content;
+      min-width: 100%;
+      font-size: 0.86rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 9px 12px;
+      text-align: left;
+      vertical-align: top;
+      max-width: 280px;
+      word-break: break-word;
+    }
+    th {
+      background: var(--brand-soft);
+      font-weight: 650;
+      position: sticky;
+      top: 0;
+      white-space: nowrap;
+      z-index: 1;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #fafcfb; }
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 48px 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title" id="docTitle">文档预览</div>
+    <div class="meta" id="docMeta"></div>
+    <button type="button" id="btnReload">刷新</button>
+    <button type="button" class="primary" id="btnOpenBrowser">在浏览器中打开</button>
+    <button type="button" class="danger" id="btnClose">关闭</button>
+  </header>
+  <div id="status">正在加载…</div>
+  <main>
+    <div class="doc" id="docBody"><div class="empty">暂无内容</div></div>
+  </main>
+  <script>
+    function getInvoke() {
+      try {
+        return window.__TAURI__?.core?.invoke;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    let currentPath = "";
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function inlineMd(text) {
+      let s = escapeHtml(text);
+      s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+      s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      return s;
+    }
+
+    function renderMarkdown(md) {
+      const lines = String(md || "").replace(/\r\n/g, "\n").split("\n");
+      const html = [];
+      let i = 0;
+      let listOpen = false;
+
+      const closeList = () => {
+        if (listOpen) {
+          html.push("</ul>");
+          listOpen = false;
+        }
+      };
+
+      // GFM 分隔行：| --- | :---: | ---: |（注意 `-` 不能写进字符类中间，否则会被当成范围）
+      const isMdTableSep = (s) => /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(String(s || "").trim());
+      const isMdTableRow = (s) => {
+        const t = String(s || "").trim();
+        return t.startsWith("|") && t.includes("|", 1);
+      };
+      const parseMdTableRow = (row) => {
+        let s = String(row || "").trim();
+        if (s.startsWith("|")) s = s.slice(1);
+        if (s.endsWith("|")) s = s.slice(0, -1);
+        return s.split("|").map((c) => c.trim());
+      };
+
+      while (i < lines.length) {
+        const line = lines[i];
+
+        if (isMdTableRow(line) && i + 1 < lines.length && isMdTableSep(lines[i + 1])) {
+          closeList();
+          const rows = [];
+          while (i < lines.length && isMdTableRow(lines[i])) {
+            rows.push(lines[i]);
+            i++;
+          }
+          if (rows.length >= 2) {
+            const head = parseMdTableRow(rows[0]);
+            html.push('<div class="table-wrap"><table><thead><tr>');
+            head.forEach((c) => html.push(`<th>${inlineMd(c)}</th>`));
+            html.push("</tr></thead><tbody>");
+            for (let r = 2; r < rows.length; r++) {
+              const cells = parseMdTableRow(rows[r]);
+              html.push("<tr>");
+              head.forEach((_, idx) => html.push(`<td>${inlineMd(cells[idx] || "")}</td>`));
+              html.push("</tr>");
+            }
+            html.push("</tbody></table></div>");
+          }
+          continue;
+        }
+
+        if (/^###\s+/.test(line)) {
+          closeList();
+          html.push(`<h3>${inlineMd(line.replace(/^###\s+/, ""))}</h3>`);
+          i++;
+          continue;
+        }
+        if (/^##\s+/.test(line)) {
+          closeList();
+          html.push(`<h2>${inlineMd(line.replace(/^##\s+/, ""))}</h2>`);
+          i++;
+          continue;
+        }
+        if (/^#\s+/.test(line)) {
+          closeList();
+          html.push(`<h1>${inlineMd(line.replace(/^#\s+/, ""))}</h1>`);
+          i++;
+          continue;
+        }
+        if (/^>\s?/.test(line)) {
+          closeList();
+          html.push(`<blockquote>${inlineMd(line.replace(/^>\s?/, ""))}</blockquote>`);
+          i++;
+          continue;
+        }
+        if (/^[-*]\s+/.test(line)) {
+          if (!listOpen) {
+            html.push("<ul>");
+            listOpen = true;
+          }
+          html.push(`<li>${inlineMd(line.replace(/^[-*]\s+/, ""))}</li>`);
+          i++;
+          continue;
+        }
+        if (!line.trim()) {
+          closeList();
+          i++;
+          continue;
+        }
+        closeList();
+        html.push(`<p>${inlineMd(line)}</p>`);
+        i++;
+      }
+      closeList();
+      return html.join("\n") || '<div class="empty">（空文档）</div>';
+    }
+
+    function fileNameFromPath(p) {
+      const s = String(p || "").replace(/\\/g, "/");
+      const i = s.lastIndexOf("/");
+      return i >= 0 ? s.slice(i + 1) : s;
+    }
+
+    async function loadFile(path) {
+      currentPath = path || "";
+      const status = document.getElementById("status");
+      const body = document.getElementById("docBody");
+      const title = document.getElementById("docTitle");
+      const meta = document.getElementById("docMeta");
+      const invoke = getInvoke();
+      if (!currentPath) {
+        status.className = "error";
+        status.textContent = "未指定文件路径";
+        return;
+      }
+      if (!invoke) {
+        status.className = "error";
+        status.textContent = "预览环境未就绪，请关闭后重试";
+        return;
+      }
+      title.textContent = fileNameFromPath(currentPath);
+      document.title = title.textContent + " · 预览";
+      status.className = "";
+      status.textContent = "正在加载…";
+      try {
+        const text = await invoke("read_text_file_cmd", { path: currentPath });
+        body.innerHTML = renderMarkdown(text);
+        meta.textContent = `${Math.max(1, Math.ceil((text || "").length / 1024))} KB`;
+        status.textContent = "";
+      } catch (e) {
+        status.className = "error";
+        status.textContent = "加载失败：" + e;
+        body.innerHTML = '<div class="empty">无法打开该文档</div>';
+      }
+    }
+
+    document.getElementById("btnReload").onclick = () => loadFile(currentPath);
+    document.getElementById("btnOpenBrowser").onclick = async () => {
+      const invoke = getInvoke();
+      const body = document.getElementById("docBody");
+      const title = document.getElementById("docTitle");
+      const status = document.getElementById("status");
+      if (!invoke || !body) return;
+      try {
+        await invoke("open_html_in_browser_cmd", {
+          title: (title?.textContent || "").trim() || "文档预览",
+          bodyHtml: body.innerHTML,
+        });
+      } catch (e) {
+        status.className = "error";
+        status.textContent = String(e);
+      }
+    };
+    document.getElementById("btnClose").onclick = async () => {
+      const invoke = getInvoke();
+      try {
+        if (invoke) await invoke("close_markdown_viewer_cmd");
+        else window.close();
+      } catch (_) {
+        try { window.close(); } catch (_) {}
+      }
+    };
+
+    window.__webclawLoadMarkdown = (path) => loadFile(path);
+
+    async function boot() {
+      const invoke = getInvoke();
+      const status = document.getElementById("status");
+      if (!invoke) {
+        status.className = "error";
+        status.textContent = "预览环境未就绪";
+        return;
+      }
+      try {
+        const pending = await invoke("take_pending_markdown_path_cmd");
+        if (pending) {
+          await loadFile(pending);
+          return;
+        }
+      } catch (e) {
+        status.className = "error";
+        status.textContent = "读取路径失败：" + e;
+        return;
+      }
+      status.className = "error";
+      status.textContent = "没有待预览的文档";
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
+  </script>
+</body>
+</html>

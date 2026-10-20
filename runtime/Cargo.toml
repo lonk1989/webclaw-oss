@@ -1,0 +1,94 @@
+[package]
+name = "webclaw"
+version = "0.1.21"
+description = "Deterministic browser RPA driven by natural-language recipes (Chinese first)"
+authors = ["webclaw contributors"]
+edition = "2021"
+license = "MIT"
+default-run = "webclaw-lite"
+
+[[bin]]
+name = "webclaw"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "webclaw-worker"
+path = "src/bin/webclaw-worker.rs"
+
+[[bin]]
+name = "webclaw-lite"
+path = "src/bin/webclaw-lite.rs"
+
+[lib]
+name = "webclaw_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "devtools", "macos-private-api", "image-png"], optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
+rfd = { version = "0.15", optional = true }
+rapidocr-core = { version = "0.2.2", features = ["model-download"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp"] }
+ort = "2.0.0-rc.13"
+ndarray = "0.17"
+aes = "0.8"
+md-5 = "0.10"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream", "multipart", "cookies", "blocking"] }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+url = "2"
+chrono = { version = "0.4", features = ["serde"] }
+parking_lot = "0.12"
+dirs = "6"
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+aes-gcm = "0.10"
+getrandom = "0.2"
+base64 = "0.22"
+regex = "1"
+rhai = { version = "1.21", features = ["serde"] }
+calamine = "0.26"
+umya-spreadsheet = "2.2"
+arboard = "3"
+zip = "2.2"
+encoding_rs = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+windows = { version = "0.58", features = [
+  "Win32_UI_Shell",
+  "Win32_Foundation",
+  "Win32_Security_Cryptography",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Networking_WinSock",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[features]
+# OSS v1 ships webclaw-lite only; desktop is opt-in.
+default = []
+desktop = [
+  "dep:tauri",
+  "dep:tauri-plugin-shell",
+  "dep:tauri-plugin-single-instance",
+  "dep:rfd",
+  "dep:tauri-build",
+  "custom-protocol",
+]
+custom-protocol = ["tauri/custom-protocol"]

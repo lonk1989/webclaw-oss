@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>登录 · 中环洁webclaw</title>
+  <style>
+    :root {
+      --brand-0: #00532c;
+      --brand-1: #006f3f;
+      --brand-2: #298754;
+      --brand-3: #a2d8b1;
+      --brand-4: #d0f0d6;
+      --brand-5: #e8f5ec;
+      --brand-1-rgb: 0, 111, 63;
+      --danger: #c0392b;
+      --font-ui: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 14px;
+      --shadow-xs: 0 1px 2px rgba(26, 51, 40, 0.04);
+      --shadow-sm: 0 2px 8px rgba(26, 51, 40, 0.06);
+      --shadow-md: 0 8px 24px rgba(26, 51, 40, 0.1);
+    }
+
+    :root,
+    [data-theme="light"] {
+      --bg-deep: #f4f6f5;
+      --bg-mid: #f4f6f5;
+      --bg-gradient-end: #eef2f0;
+      --glass: #ffffff;
+      --glass-border: #d7e3db;
+      --glass-border-soft: #e6eee9;
+      --text: #1a3328;
+      --muted: #5a7a68;
+      --input-bg: #f7faf8;
+      --hover-overlay: rgba(0, 111, 63, 0.06);
+      --btn-primary-border: transparent;
+      --disabled-btn-text: #ffffff;
+      --error-bg: rgba(192, 57, 43, 0.08);
+      --error-border: rgba(192, 57, 43, 0.28);
+      --brand-title-from: var(--brand-0);
+      --brand-title-to: var(--brand-1);
+      --atmosphere: rgba(0, 111, 63, 0.06);
+    }
+
+    [data-theme="dark"] {
+      --bg-deep: #141c18;
+      --bg-mid: #171f1b;
+      --bg-gradient-end: #1a2420;
+      --glass: #1e2a24;
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --glass-border-soft: rgba(255, 255, 255, 0.08);
+      --text: #eef6f0;
+      --muted: #9ab5a6;
+      --input-bg: #151c18;
+      --hover-overlay: rgba(255, 255, 255, 0.05);
+      --btn-primary-border: transparent;
+      --disabled-btn-text: rgba(255, 255, 255, 0.75);
+      --error-bg: rgba(192, 57, 43, 0.16);
+      --error-border: rgba(192, 57, 43, 0.4);
+      --brand-title-from: #ffffff;
+      --brand-title-to: var(--brand-4);
+      --atmosphere: rgba(162, 216, 177, 0.08);
+      --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: var(--font-ui);
+      color: var(--text);
+      background: var(--bg-mid);
+    }
+
+    .login-shell {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse 70% 50% at 15% 20%, var(--atmosphere), transparent 55%),
+        radial-gradient(ellipse 60% 45% at 88% 78%, var(--atmosphere), transparent 50%),
+        linear-gradient(165deg, var(--bg-mid) 0%, var(--bg-gradient-end) 100%);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 36px 32px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      position: relative;
+      z-index: 1;
+      animation: card-in 0.35s ease-out;
+    }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 1.45rem;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      line-height: 1.25;
+      background: linear-gradient(120deg, var(--brand-title-from), var(--brand-title-to));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .brand-sub {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .login-error {
+      display: none;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--error-border);
+      background: var(--error-bg);
+      color: var(--danger);
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+    .login-error.visible { display: block; }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    input:focus {
+      border-color: var(--brand-1);
+      box-shadow: 0 0 0 3px rgba(var(--brand-1-rgb), 0.12);
+    }
+    input.field-invalid {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.12);
+    }
+
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    .remember-row input {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--brand-1);
+      cursor: pointer;
+    }
+    .remember-row label {
+      font-size: 0.84rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      margin-top: 4px;
+      color: #fff;
+      border: 1px solid var(--btn-primary-border);
+      border-radius: var(--radius-sm);
+      padding: 11px 14px;
+      font-size: 0.92rem;
+      font-weight: 550;
+      font-family: inherit;
+      cursor: pointer;
+      background: var(--brand-1);
+      transition: background 0.15s ease;
+    }
+    button[type="submit"]:hover:not(:disabled) { background: var(--brand-2); }
+    button[type="submit"]:active:not(:disabled) { background: var(--brand-0); }
+    button[type="submit"]:disabled {
+      background: var(--brand-3);
+      color: var(--disabled-btn-text);
+      opacity: 0.85;
+      cursor: not-allowed;
+    }
+
+    .login-foot {
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .boot-checking {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-mid);
+      color: var(--muted);
+      font-size: 0.9rem;
+      z-index: 10;
+    }
+    .boot-checking.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="boot-checking" id="bootChecking">正在校验登录状态…</div>
+  <div class="login-shell" id="loginShell" hidden>
+    <form class="login-card" id="loginForm" autocomplete="on" novalidate>
+      <div class="brand">
+        <h1 class="brand-title">中环洁webclaw</h1>
+        <p class="brand-sub">欢迎登录智能操作小助手客户端</p>
+        <p class="brand-sub">解放双手，提高效率</p>
+      </div>
+
+      <div class="login-error" id="loginError" role="alert" aria-live="polite"></div>
+
+      <div class="field">
+        <label for="username">账号</label>
+        <input type="text" id="username" name="username" placeholder="手机号或用户名" autocomplete="username" required />
+      </div>
+
+      <div class="field">
+        <label for="password">密码</label>
+        <input type="password" id="password" name="password" placeholder="请输入密码" autocomplete="current-password" required />
+      </div>
+
+      <div class="remember-row">
+        <input type="checkbox" id="rememberUser" />
+        <label for="rememberUser">记住账号</label>
+      </div>
+
+      <button type="submit" id="btnLogin">登录</button>
+      <p class="login-foot">中环洁 · webclaw</p>
+    </form>
+  </div>
+
+  <script type="module">
+    import { createAuth, parseUserProfile, pickAccessToken, isOkCode } from "./zhj-login.js";
+
+    const TOKEN_KEY = "webclaw_access_token";
+    const USER_KEY = "webclaw_user";
+    const USER_ID_KEY = "webclaw_user_id";
+    const NICK_KEY = "webclaw_nick_name";
+    const COMPANY_KEY = "webclaw_company";
+    const DEPT_KEY = "webclaw_dept";
+    const REMEMBER_KEY = "webclaw_remember_user";
+
+    const bootEl = document.getElementById("bootChecking");
+    const shellEl = document.getElementById("loginShell");
+    const form = document.getElementById("loginForm");
+    const usernameEl = document.getElementById("username");
+    const passwordEl = document.getElementById("password");
+    const rememberEl = document.getElementById("rememberUser");
+    const errorEl = document.getElementById("loginError");
+    const btnEl = document.getElementById("btnLogin");
+
+    function setError(msg) {
+      if (!msg) {
+        errorEl.textContent = "";
+        errorEl.classList.remove("visible");
+        return;
+      }
+      errorEl.textContent = msg;
+      errorEl.classList.add("visible");
+    }
+
+    function setLoading(on) {
+      btnEl.disabled = on;
+      btnEl.textContent = on ? "登录中…" : "登录";
+      usernameEl.disabled = on;
+      passwordEl.disabled = on;
+      rememberEl.disabled = on;
+    }
+
+    function clearSession() {
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(USER_ID_KEY);
+        localStorage.removeItem(NICK_KEY);
+        localStorage.removeItem(COMPANY_KEY);
+        localStorage.removeItem(DEPT_KEY);
+        localStorage.removeItem("webclaw_token_expire_in");
+      } catch (_) {}
+    }
+
+    function saveSession(token, profile, expireIn) {
+      localStorage.setItem(TOKEN_KEY, token);
+      if (profile?.userName) localStorage.setItem(USER_KEY, profile.userName);
+      if (profile?.userId) localStorage.setItem(USER_ID_KEY, profile.userId);
+      if (profile?.nickName) localStorage.setItem(NICK_KEY, profile.nickName);
+      if (profile?.companyName) localStorage.setItem(COMPANY_KEY, profile.companyName);
+      if (profile?.deptName) localStorage.setItem(DEPT_KEY, profile.deptName);
+      if (expireIn != null) localStorage.setItem("webclaw_token_expire_in", String(expireIn));
+    }
+
+    function showLoginForm() {
+      bootEl.classList.add("hidden");
+      shellEl.hidden = false;
+      try {
+        const reason = sessionStorage.getItem("webclaw_login_reason");
+        if (reason) {
+          setError(reason);
+          sessionStorage.removeItem("webclaw_login_reason");
+        }
+      } catch (_) {}
+    }
+
+    async function applyThemeFromSettings() {
+      try {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (!invoke) return;
+        const settings = await invoke("get_settings_cmd");
+        const theme = settings?.theme === "dark" ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+      } catch (_) {}
+    }
+
+    function restoreRememberedUser() {
+      try {
+        const remembered = localStorage.getItem(REMEMBER_KEY);
+        if (remembered) {
+          usernameEl.value = remembered;
+          rememberEl.checked = true;
+        }
+      } catch (_) {}
+    }
+
+    function tauriRequest(options) {
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (!invoke) {
+        return Promise.reject(new Error("未检测到 Tauri 运行时，无法登录"));
+      }
+      const method = options.method || "POST";
+      const payload = {
+        method,
+        url: options.url,
+        headers: options.header || {},
+      };
+      if (options.data != null && String(method).toUpperCase() !== "GET") {
+        payload.body = typeof options.data === "string" ? options.data : JSON.stringify(options.data);
+      }
+      console.info("[zhj-api]", method, options.url, {
+        headers: options.header,
+        bodyPreview:
+          typeof options.data === "string"
+            ? options.data.slice(0, 80)
+            : options.data,
+      });
+      return invoke("zhj_auth_login", payload).then((res) => {
+        console.info("[zhj-api] response", options.url, res);
+        return res;
+      });
+    }
+
+    const auth = createAuth({ request: tauriRequest });
+
+    async function tryResumeSession() {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        showLoginForm();
+        return;
+      }
+      try {
+        const res = await auth.getInfo(token);
+        if (isOkCode(res?.code)) {
+          const profile = parseUserProfile(res);
+          if (!profile.userName) {
+            profile.userName = localStorage.getItem(USER_KEY) || "";
+          }
+          if (!profile.userId) {
+            clearSession();
+            try {
+              sessionStorage.setItem(
+                "webclaw_login_reason",
+                "用户信息不完整，请重新登录"
+              );
+            } catch (_) {}
+            showLoginForm();
+            return;
+          }
+          saveSession(token, profile, null);
+          location.replace("../index.html");
+          return;
+        }
+        console.warn("[zhj-api] getInfo 未通过，需重新登录", res);
+        clearSession();
+        try {
+          sessionStorage.setItem(
+            "webclaw_login_reason",
+            res?.msg || res?.message || "登录已过期，请重新登录"
+          );
+        } catch (_) {}
+      } catch (err) {
+        console.warn("[zhj-api] getInfo 异常，需重新登录", err);
+        clearSession();
+        try {
+          sessionStorage.setItem(
+            "webclaw_login_reason",
+            err?.message ? String(err.message) : "无法验证登录状态，请重新登录"
+          );
+        } catch (_) {}
+      }
+      showLoginForm();
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setError("");
+      usernameEl.classList.remove("field-invalid");
+      passwordEl.classList.remove("field-invalid");
+
+      const username = usernameEl.value.trim();
+      const password = passwordEl.value;
+      if (!username) {
+        usernameEl.classList.add("field-invalid");
+        setError("请输入账号");
+        usernameEl.focus();
+        return;
+      }
+      if (!password) {
+        passwordEl.classList.add("field-invalid");
+        setError("请输入密码");
+        passwordEl.focus();
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await auth.login({ username, password });
+        if (!isOkCode(res?.code)) {
+          const msg = res?.msg || res?.message || "登录失败，请检查账号密码";
+          setError(String(msg));
+          return;
+        }
+        const token = pickAccessToken(res);
+        if (!token) {
+          setError("登录成功但未返回令牌，请联系管理员");
+          return;
+        }
+
+        // 登录后立刻校验 getInfo；失败则留在登录页并展示原因（避免进主界面又被踢回）
+        let profile = { userName: username, nickName: "" };
+        try {
+          const info = await auth.getInfo(token);
+          if (!isOkCode(info?.code)) {
+            setError(
+              info?.msg ||
+                info?.message ||
+                `登录校验失败（getInfo code=${info?.code ?? "?"}）。请按 F12 查看 Console 中的 [zhj-api] 日志`
+            );
+            return;
+          }
+          profile = parseUserProfile(info);
+          if (!profile.userName) profile.userName = username;
+          if (!profile.userId) {
+            setError("登录成功，但用户信息缺少 userId，请联系管理员");
+            return;
+          }
+        } catch (err) {
+          setError(
+            "登录成功，但 getInfo 校验失败：" +
+              (err?.message || String(err)) +
+              "（按 F12 查看 Console）"
+          );
+          return;
+        }
+
+        saveSession(token, profile, res.data?.expire_in ?? res.data?.expireIn);
+        if (rememberEl.checked) {
+          localStorage.setItem(REMEMBER_KEY, username);
+        } else {
+          localStorage.removeItem(REMEMBER_KEY);
+        }
+        location.replace("../index.html");
+      } catch (err) {
+        setError(err?.message || String(err) || "网络错误，请稍后重试");
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // F12 / Ctrl+Shift+I：依赖 Tauri webview toggle（需 capabilities + devtools feature）
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "F12") {
+        console.info("[devtools] F12 — 若未弹出，请用 Ctrl+Shift+I；API 走 Rust 代理，请看 Console 的 [zhj-api]");
+      }
+    });
+
+    await applyThemeFromSettings();
+    restoreRememberedUser();
+    await tryResumeSession();
+    if (!shellEl.hidden) {
+      if (usernameEl.value) passwordEl.focus();
+      else usernameEl.focus();
+    }
+  </script>
+</body>
+</html>

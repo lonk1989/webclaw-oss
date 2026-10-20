@@ -1,0 +1,15 @@
+# Example overlay: mount @webclaw/dsh-plugin into a DSH profile.
+# Usage: dsh web --patch path/to/this/file  (or merge into your cordis overlay)
+#
+# Install first (public npm pending — GitHub or local path works now):
+#   npm install github:lonk1989/webclaw-oss#main:packages/dsh-plugin
+# Then point binaryPath at a built webclaw-lite.
+
+- id: webclaw
+  name: '@webclaw/dsh-plugin'
+  config:
+    binaryPath: webclaw-lite
+    # webclawHome: '%LOCALAPPDATA%/webclaw'   # optional; OS default if empty
+    # liteBaseUrl: ''                          # optional GitHub Release static base
+    ensureOnBoot: false
+    registerSkill: true
