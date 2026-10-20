@@ -15,7 +15,7 @@ import { registerBundledSkill } from './skill.js'
 /** Cordis plugin id. */
 export const name = 'webclaw'
 
-/** Tool registry must exist; skills are optional (registered via Reflect when present). */
+/** Tool registry must exist; skills are optional (deferred via ctx.inject). */
 export const inject = ['tools']
 
 /** Deploy-time options for locating and invoking webclaw-lite. */
@@ -58,7 +58,10 @@ function liteEnv(config: Config): LiteEnv {
  */
 export function apply(ctx: Context, config: Config): void {
   if (config.registerSkill) {
-    registerBundledSkill(ctx)
+    // Wait for skills without hard-requiring it in `inject` (keeps tools usable alone).
+    ctx.inject(['skills'], skillCtx => {
+      registerBundledSkill(skillCtx)
+    })
   }
 
   if (config.ensureOnBoot && existsSync(config.binaryPath)) {

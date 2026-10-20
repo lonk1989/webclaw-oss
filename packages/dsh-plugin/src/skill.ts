@@ -56,9 +56,11 @@ export function parseSkillMarkdown(raw: string): {
 
 /**
  * Register the prefab skill into the host catalog.
+ * Call only when `skills` is injected, or use `ctx.get('skills')` (never bare `ctx.skills` / Reflect).
  */
 export function registerBundledSkill(ctx: Context): boolean {
-  const host = Reflect.get(ctx, 'skills') as SkillsHost | undefined
+  // Cordis throws on undeclared service access; Reflect.get does not bypass that.
+  const host = ctx.get('skills') as SkillsHost | undefined
   if (host === undefined) return false
   const path = bundledSkillPath()
   if (!existsSync(path)) {
