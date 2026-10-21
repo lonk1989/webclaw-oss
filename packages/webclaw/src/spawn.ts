@@ -111,9 +111,13 @@ export function writeTempRecipe(recipe: string): string {
 
 /**
  * Parse the last JSONL `done` event from run stdout.
+ *
+ * lite emits `ok`/`fail` as **step counts** (u32), e.g.
+ * `{"type":"done","ok":2,"fail":0,"run_dir":"..."}` — not a boolean.
  */
 export function parseDoneEvent(stdout: string): {
   readonly ok: boolean
+  readonly okCount?: number
   readonly fail?: number
   readonly error?: string
   readonly run_dir?: string
@@ -125,15 +129,29 @@ export function parseDoneEvent(stdout: string): {
     try {
       const row = JSON.parse(line) as {
         type?: string
-        ok?: boolean
+        ok?: boolean | number
         fail?: number
         error?: string
         run_dir?: string
       }
       if (row.type === 'done') {
+        const fail =
+          typeof row.fail === 'number' && Number.isFinite(row.fail) ? row.fail : 0
+        const okCount =
+          typeof row.ok === 'number' && Number.isFinite(row.ok)
+            ? row.ok
+            : undefined
+        // Boolean ok (if ever emitted) wins; otherwise success = fail==0 && no error.
+        const ok =
+          row.ok === true
+            ? true
+            : row.ok === false
+              ? false
+              : fail === 0 && !row.error
         return {
-          ok: row.ok === true,
-          fail: row.fail,
+          ok,
+          okCount,
+          fail,
           error: row.error,
           run_dir: row.run_dir,
         }

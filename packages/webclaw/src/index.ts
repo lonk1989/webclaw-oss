@@ -275,12 +275,27 @@ export function apply(ctx: Context, config: Config): void {
             }
             const result = await runLite(await env(), argv)
             const done = parseDoneEvent(result.stdout)
-            const ok = done?.ok === true && result.code === 0
+            // Prefer JSONL done (ok/fail are step counts). Exit 0 alone is not enough
+            // if done is missing; exit non-zero with fail>0 is a real failure.
+            const ok =
+              done != null
+                ? done.ok === true && (result.code === 0 || result.code == null)
+                : result.code === 0
             return {
               ok,
               exitCode: result.code ?? -1,
+              okCount: done?.okCount ?? null,
+              fail: done?.fail ?? null,
               run_dir: done?.run_dir ?? '',
-              error: done?.error || (ok ? '' : (result.stderr || 'run failed').slice(0, 500)),
+              error:
+                done?.error ||
+                (ok
+                  ? ''
+                  : (result.stderr ||
+                      (done
+                        ? `run failed (ok=${done.okCount ?? '?'}, fail=${done.fail ?? '?'})`
+                        : 'run failed: no done event')
+                    ).slice(0, 500)),
               eventsTail: result.stdout.slice(-8000),
               recipePath: path,
             }
