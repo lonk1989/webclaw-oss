@@ -23,32 +23,13 @@ Same recipe → same business path. Prefer fixing the recipe over inventing CSS 
 
 ## Quick start
 
-### 1. Build webclaw-lite
-
-```powershell
-cd runtime
-cargo build --release --bin webclaw-lite
-# binary: ../target/release/webclaw-lite.exe
-```
-
-### 2. Install the DSH plugin
-
-```sh
-cd packages/webclaw
-npm install
-npm run build
-# or: npm install @lonk1989/webclaw  (after publish)
-```
-
-### 3. Mount in DSH
-
-See [examples/cordis.patch.yml](examples/cordis.patch.yml) and [packages/webclaw/cordis.patch.yml](packages/webclaw/cordis.patch.yml).
-
-Install into the **web profile** (not only `npm install -g`):
+### 1. Install the DSH plugin (recommended)
 
 ```sh
 dsh plugin --profile web add @lonk1989/webclaw
 ```
+
+On **Windows**, the plugin **auto-downloads** `webclaw-lite` from [GitHub Releases](https://github.com/lonk1989/webclaw-oss/releases) on first boot / tool call (SHA256 verified → `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe`). No separate hand install.
 
 Mount with an **`insert:`** patch (a bare `- id:` only updates an existing row):
 
@@ -57,7 +38,6 @@ Mount with an **`insert:`** patch (a bare `- id:` only updates an existing row):
     - id: webclaw
       name: '@lonk1989/webclaw'
       config:
-        binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
         registerSkill: true
         recipesRel: recipes
 ```
@@ -72,6 +52,25 @@ Ask the agent to run a recipe such as:
 打开https://example.com，等待2，采集
 ```
 
+### 2. Local dev (optional)
+
+Build lite from source when hacking the Rust CLI:
+
+```powershell
+cd runtime
+cargo build --release --bin webclaw-lite
+# then set config.binaryPath to ../target/release/webclaw-lite.exe
+```
+
+Plugin package:
+
+```sh
+cd packages/webclaw
+npm install
+npm run build
+```
+
+See [examples/cordis.patch.yml](examples/cordis.patch.yml) and [packages/webclaw/cordis.patch.yml](packages/webclaw/cordis.patch.yml).
 ## vs official browser-use
 
 | | Playwright / CDP MCP | webclaw |

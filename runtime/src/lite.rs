@@ -7,8 +7,13 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 
 /// Optional static base for `update` / install downloads.
-/// Set `WEBCLAW_LITE_BASE` or `WEBCLAW_WORKER_URL`; empty means no default CDN.
+/// Set `WEBCLAW_LITE_BASE` (directory prefix) or `WEBCLAW_WORKER_URL` (full exe URL).
+/// Empty base falls back to GitHub Releases `latest` (Windows asset).
 pub const DEFAULT_STATIC_BASE: &str = "";
+
+/// GitHub Releases "latest" asset URL (Windows x64). Used when no env override is set.
+pub const DEFAULT_GITHUB_LATEST_EXE: &str =
+    "https://github.com/lonk1989/webclaw-oss/releases/latest/download/webclaw-lite-windows-x64.exe";
 
 pub fn default_download_url() -> String {
     if let Ok(u) = std::env::var("WEBCLAW_WORKER_URL") {
@@ -21,11 +26,20 @@ pub fn default_download_url() -> String {
         .unwrap_or_else(|_| DEFAULT_STATIC_BASE.to_string());
     let base = base.trim().trim_end_matches('/');
     if base.is_empty() {
-        return String::new();
+        #[cfg(target_os = "windows")]
+        {
+            return DEFAULT_GITHUB_LATEST_EXE.to_string();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            return String::new();
+        }
     }
+    // Prefix is a release/static directory (GitHub download dir or mirror).
+    // Asset sits directly under the prefix — not under a nested `/release/` folder.
     #[cfg(target_os = "windows")]
     {
-        return format!("{base}/release/webclaw-lite-windows-x64.exe");
+        return format!("{base}/webclaw-lite-windows-x64.exe");
     }
     #[cfg(target_os = "macos")]
     {
@@ -34,11 +48,11 @@ pub fn default_download_url() -> String {
         } else {
             "x64"
         };
-        return format!("{base}/release/webclaw-lite-macos-{arch}");
+        return format!("{base}/webclaw-lite-macos-{arch}");
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        format!("{base}/release/webclaw-lite-linux-x64")
+        format!("{base}/webclaw-lite-linux-x64")
     }
 }
 
@@ -80,7 +94,8 @@ pub fn print_usage() {
   WEBCLAW_HEADLESS      设为 1 时无头启动 Chrome（默认弹出可见窗口）
   WEBCLAW_HUMAN_DIR     人机交换目录（默认 <run>/human）
   WEBCLAW_WORKER_URL    update 下载地址（完整 URL）
-  WEBCLAW_LITE_BASE     静态站前缀（拼默认下载 URL；未设置则 update 不可用）
+  WEBCLAW_LITE_BASE     静态站/Release 目录前缀（拼 …/webclaw-lite-windows-x64.exe；
+                        未设置时 Windows 默认 GitHub Releases latest）
 "
     );
 }

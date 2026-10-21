@@ -1,0 +1,269 @@
+/**
+ * Bootstrap webclaw-lite from GitHub Releases (Windows x64).
+ * npm ships only the Cordis plugin; the native CLI is downloaded on demand.
+ */
+
+import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { runLite } from './spawn.js'
+
+const require = createRequire(import.meta.url)
+const PKG = require('../package.json') as { version: string }
+
+/** npm package version — Release tag is `v${PLUGIN_VERSION}`. */
+export const PLUGIN_VERSION = PKG.version
+
+const EXE_NAME = 'webclaw-lite-windows-x64.exe'
+const MANAGED_EXE = 'webclaw-lite.exe'
+const VERSION_STAMP = '.webclaw-lite-npm-version'
+
+/** Sentinel / empty binaryPath → use managed `%LOCALAPPDATA%/webclaw/bin/…`. */
+const MANAGED_SENTINELS = new Set(['', 'webclaw-lite', 'webclaw-lite.exe'])
+
+export interface EnsureLiteConfig {
+  readonly binaryPath: string
+  readonly webclawHome: string
+  /** Release directory prefix (no filename). Empty → GitHub download for this package version. */
+  readonly liteBaseUrl: string
+}
+
+export interface EnsureLiteResult {
+  readonly binaryPath: string
+  readonly webclawHome: string
+  readonly liteBaseUrl: string
+  readonly downloaded: boolean
+}
+
+export type EnsureLog = {
+  info: (msg: string, ...args: unknown[]) => void
+  warn: (msg: string, ...args: unknown[]) => void
+}
+
+let inflight: Promise<EnsureLiteResult> | undefined
+
+/**
+ * Default GitHub Releases directory for this plugin version (no trailing slash).
+ */
+export function defaultLiteBaseUrl(version = PLUGIN_VERSION): string {
+  return `https://github.com/lonk1989/webclaw-oss/releases/download/v${version}`
+}
+
+/**
+ * Resolve WEBCLAW_HOME (config → env → %LOCALAPPDATA%/webclaw | ~/.webclaw).
+ */
+export function resolveWebclawHome(config: EnsureLiteConfig): string {
+  const fromConfig = config.webclawHome?.trim()
+  if (fromConfig) return fromConfig
+  const fromEnv = process.env.WEBCLAW_HOME?.trim()
+  if (fromEnv) return fromEnv
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA?.trim()
+    if (local) return join(local, 'webclaw')
+    return join(homedir(), 'AppData', 'Local', 'webclaw')
+  }
+  return join(homedir(), '.webclaw')
+}
+
+/**
+ * Managed install path for the lite CLI.
+ */
+export function managedBinaryPath(home: string): string {
+  if (process.platform === 'win32') {
+    return join(home, 'bin', MANAGED_EXE)
+  }
+  return join(home, 'bin', 'webclaw-lite')
+}
+
+/**
+ * Whether config asks for the managed binary (auto-download eligible).
+ */
+export function usesManagedBinary(binaryPath: string): boolean {
+  return MANAGED_SENTINELS.has(binaryPath.trim())
+}
+
+/**
+ * Effective binary path: managed home/bin or user override.
+ */
+export function resolveBinaryPath(config: EnsureLiteConfig): string {
+  if (!usesManagedBinary(config.binaryPath)) {
+    return config.binaryPath.trim()
+  }
+  return managedBinaryPath(resolveWebclawHome(config))
+}
+
+/**
+ * Release prefix used for download / WEBCLAW_LITE_BASE.
+ */
+export function resolveLiteBaseUrl(config: EnsureLiteConfig): string {
+  const custom = config.liteBaseUrl?.trim()
+  if (custom) return custom.replace(/\/+$/, '')
+  return defaultLiteBaseUrl()
+}
+
+function stampPath(home: string): string {
+  return join(home, 'bin', VERSION_STAMP)
+}
+
+function stampMatches(home: string, version: string): boolean {
+  try {
+    return readFileSync(stampPath(home), 'utf8').trim() === version
+  } catch {
+    return false
+  }
+}
+
+function writeStamp(home: string, version: string): void {
+  mkdirSync(join(home, 'bin'), { recursive: true })
+  writeFileSync(stampPath(home), `${version}\n`, 'utf8')
+}
+
+function parseSha256File(text: string): string {
+  const line = text.trim().split(/\r?\n/)[0]?.trim() ?? ''
+  const hex = line.split(/\s+/)[0] ?? ''
+  if (!/^[a-fA-F0-9]{64}$/.test(hex)) {
+    throw new Error(`invalid sha256 file content: ${line.slice(0, 80)}`)
+  }
+  return hex.toLowerCase()
+}
+
+async function download(url: string): Promise<Buffer> {
+  const res = await fetch(url, {
+    redirect: 'follow',
+    headers: { 'user-agent': `webclaw-plugin/${PLUGIN_VERSION}` },
+  })
+  if (!res.ok) {
+    throw new Error(`download failed ${res.status} ${res.statusText}: ${url}`)
+  }
+  return Buffer.from(await res.arrayBuffer())
+}
+
+async function downloadManaged(
+  home: string,
+  baseUrl: string,
+  log: EnsureLog,
+): Promise<string> {
+  if (process.platform !== 'win32') {
+    throw new Error(
+      'webclaw-lite auto-install currently supports Windows x64 only. ' +
+        'Build from source or set config.binaryPath to a local binary. ' +
+        'See https://github.com/lonk1989/webclaw-oss',
+    )
+  }
+
+  const exeUrl = `${baseUrl.replace(/\/+$/, '')}/${EXE_NAME}`
+  const shaUrl = `${exeUrl}.sha256`
+  log.info('webclaw: downloading %s', exeUrl)
+
+  const [body, shaText] = await Promise.all([
+    download(exeUrl),
+    download(shaUrl).then(b => b.toString('utf8')),
+  ])
+  const expected = parseSha256File(shaText)
+  const actual = createHash('sha256').update(body).digest('hex')
+  if (actual !== expected) {
+    throw new Error(
+      `sha256 mismatch for ${EXE_NAME}: expected ${expected}, got ${actual}`,
+    )
+  }
+
+  const binDir = join(home, 'bin')
+  mkdirSync(binDir, { recursive: true })
+  const dest = managedBinaryPath(home)
+  const tmp = `${dest}.download`
+  writeFileSync(tmp, body)
+  try {
+    if (existsSync(dest)) unlinkSync(dest)
+  } catch {
+    /* replace below */
+  }
+  renameSync(tmp, dest)
+  writeStamp(home, PLUGIN_VERSION)
+  log.info('webclaw: installed %s (%s)', dest, PLUGIN_VERSION)
+  return dest
+}
+
+async function runInstallMarker(
+  binaryPath: string,
+  home: string,
+  liteBaseUrl: string,
+  log: EnsureLog,
+): Promise<void> {
+  const result = await runLite(
+    {
+      binaryPath,
+      webclawHome: home,
+      liteBaseUrl,
+      timeoutMs: 120_000,
+    },
+    ['install'],
+  )
+  if (result.code === 0) {
+    log.info('webclaw: lite install marker ok')
+  } else {
+    log.warn(
+      'webclaw: lite install marker failed: %s',
+      (result.stderr || result.stdout || 'non-zero').slice(0, 300),
+    )
+  }
+}
+
+/**
+ * Ensure webclaw-lite exists (download from Releases when using managed path).
+ * Single-flight across concurrent tool calls.
+ */
+export function ensureLite(
+  config: EnsureLiteConfig,
+  log: EnsureLog = console,
+): Promise<EnsureLiteResult> {
+  if (!inflight) {
+    inflight = doEnsure(config, log).finally(() => {
+      inflight = undefined
+    })
+  }
+  return inflight
+}
+
+async function doEnsure(
+  config: EnsureLiteConfig,
+  log: EnsureLog,
+): Promise<EnsureLiteResult> {
+  const home = resolveWebclawHome(config)
+  const liteBaseUrl = resolveLiteBaseUrl(config)
+  mkdirSync(join(home, 'bin'), { recursive: true })
+
+  if (!usesManagedBinary(config.binaryPath)) {
+    const binaryPath = config.binaryPath.trim()
+    if (!existsSync(binaryPath)) {
+      throw new Error(
+        `webclaw-lite not found at binaryPath=${binaryPath}. ` +
+          'Install the CLI, or clear binaryPath to use GitHub Releases auto-install.',
+      )
+    }
+    await runInstallMarker(binaryPath, home, liteBaseUrl, log)
+    return { binaryPath, webclawHome: home, liteBaseUrl, downloaded: false }
+  }
+
+  const dest = managedBinaryPath(home)
+  let downloaded = false
+  if (!existsSync(dest) || !stampMatches(home, PLUGIN_VERSION)) {
+    await downloadManaged(home, liteBaseUrl, log)
+    downloaded = true
+  }
+  await runInstallMarker(dest, home, liteBaseUrl, log)
+  return {
+    binaryPath: dest,
+    webclawHome: home,
+    liteBaseUrl,
+    downloaded,
+  }
+}

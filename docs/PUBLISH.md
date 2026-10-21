@@ -13,15 +13,20 @@
 
 ## Release flow
 
+Keep **npm `packages/webclaw` version** and the **git tag** in lockstep (e.g. package `0.1.7` → tag `v0.1.7`).  
+The Cordis plugin auto-downloads  
+`https://github.com/lonk1989/webclaw-oss/releases/download/v{version}/webclaw-lite-windows-x64.exe`.
+
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+# after bumping packages/webclaw/package.json version
+git tag v0.1.7
+git push origin v0.1.7
 ```
 
 GitHub Actions (`release.yml`) will:
 
-- Build `webclaw-lite-windows-x64.exe` and attach it to the GitHub Release
-- `npm publish` `@lonk1989/webclaw` when `NPM_TOKEN` is set
+- Build `webclaw-lite-windows-x64.exe` (+ `.sha256`) and attach them to the GitHub Release
+- `npm publish` `@lonk1989/webclaw` via Trusted Publishing (OIDC)
 
 ## Manual publish
 

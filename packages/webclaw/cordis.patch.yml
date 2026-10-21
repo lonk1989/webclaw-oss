@@ -4,11 +4,15 @@
 #   pnpm add @lonk1989/webclaw
 #   # or: pnpm add E:/Workspace/webclaw-oss/packages/webclaw
 #   pnpm dsh web --patch path/to/this/file
+#
+# Defaults: ensureOnBoot downloads webclaw-lite from GitHub Releases (Windows).
 
 - insert:
     - id: webclaw
       name: '@lonk1989/webclaw'
       config:
-        binaryPath: webclaw-lite
         registerSkill: true
         recipesRel: recipes
+        # ensureOnBoot: true   # default
+        # binaryPath: 'C:/path/to/webclaw-lite.exe'  # skip auto-download
+        # liteBaseUrl: 'https://github.com/lonk1989/webclaw-oss/releases/download/v0.1.7'

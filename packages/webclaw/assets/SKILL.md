@@ -23,6 +23,7 @@ Deterministic browser RPA driven by **Chinese natural-language recipes** stored 
 1. Prefer Host tools: `webclaw_status`, `webclaw_probe`, `webclaw_run`, `webclaw_freeze`, `webclaw_list_recipes`, `webclaw_import`, `webclaw_human_reply`, `webclaw_cancel`
 2. **Forbidden**: Playwright / Puppeteer / CSS selectors / invented verbs / labels not in the latest probe
 3. Chat **attachments** are one-shot (read-only). For durable library use `webclaw_import` or `webclaw_freeze`
+4. **Install**: on Windows the `@lonk1989/webclaw` plugin auto-downloads `webclaw-lite` from GitHub Releases. If `webclaw_status` reports missing binary on non-Windows, point the user at building `runtime/` or setting `binaryPath`. Do not invent Playwright fallbacks.
 
 ## Authoring
 

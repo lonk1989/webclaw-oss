@@ -1,9 +1,15 @@
-# Requires WEBCLAW_LITE_BASE (release static prefix) or WEBCLAW_WORKER_URL (full exe URL).
+# Install webclaw-lite from a Release/static prefix (or full exe URL).
+# Env:
+#   WEBCLAW_LITE_BASE  — directory prefix (default: GitHub Releases latest)
+#   WEBCLAW_WORKER_URL — full .exe URL (wins over base)
+#   WEBCLAW_HOME       — data root (default %LOCALAPPDATA%\webclaw)
 $ErrorActionPreference = "Stop"
 $base = $env:WEBCLAW_LITE_BASE
 $url = $env:WEBCLAW_WORKER_URL
 if (-not $url) {
-  if (-not $base) { throw "Set WEBCLAW_LITE_BASE or WEBCLAW_WORKER_URL before install." }
+  if (-not $base) {
+    $base = "https://github.com/lonk1989/webclaw-oss/releases/latest/download"
+  }
   $url = ($base.TrimEnd("/") + "/webclaw-lite-windows-x64.exe")
 }
 $homeDir = if ($env:WEBCLAW_HOME) { $env:WEBCLAW_HOME } else { Join-Path $env:LOCALAPPDATA "webclaw" }

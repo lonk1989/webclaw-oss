@@ -2,13 +2,20 @@
  * @lonk1989/webclaw — recipe-level browser RPA for DeepSeek Harness.
  *
  * Registers task tools that spawn webclaw-lite. Does not claim ctx.browserUse.
+ * On Windows, ensureOnBoot (default true) downloads lite from GitHub Releases.
  * @module
  */
 
-import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
+import {
+  ensureLite,
+  resolveBinaryPath,
+  resolveLiteBaseUrl,
+  resolveWebclawHome,
+  type EnsureLiteResult,
+} from './ensure-lite.js'
 import { parseDoneEvent, runLite, writeTempRecipe, type LiteEnv } from './spawn.js'
 import {
   agentCwd,
@@ -28,13 +35,19 @@ export const inject = ['tools']
 
 /** Deploy-time options for locating and invoking webclaw-lite. */
 export interface Config {
-  /** Absolute path or PATH command for webclaw-lite. */
+  /**
+   * Absolute path to webclaw-lite, or empty / `webclaw-lite` to use the managed
+   * `%LOCALAPPDATA%/webclaw/bin/webclaw-lite.exe` (auto-downloaded on Windows).
+   */
   binaryPath: string
   /** Maps to WEBCLAW_HOME. */
   webclawHome: string
-  /** Maps to WEBCLAW_LITE_BASE (install/update); empty skips remote update. */
+  /**
+   * Release directory prefix for download/update (no filename).
+   * Empty → GitHub `…/releases/download/v{pluginVersion}`.
+   */
   liteBaseUrl: string
-  /** When true, run `install` once at boot if binary exists. Default false. */
+  /** When true, ensure lite at boot (download if missing). Default true. */
   ensureOnBoot: boolean
   /** Register packaged SKILL.md. Default true. */
   registerSkill: boolean
@@ -56,7 +69,7 @@ export const Config: z<Partial<Config>, Config> = z.object({
   binaryPath: z.string().default('webclaw-lite'),
   webclawHome: z.string().default(''),
   liteBaseUrl: z.string().default(''),
-  ensureOnBoot: z.boolean().default(false),
+  ensureOnBoot: z.boolean().default(true),
   registerSkill: z.boolean().default(true),
   runTimeoutMs: z.number().min(1_000).default(600_000),
   probeTimeoutMs: z.number().min(1_000).default(120_000),
@@ -72,11 +85,15 @@ function recipesCfg(config: Config): RecipesConfig {
   }
 }
 
-function liteEnv(config: Config, timeoutMs?: number): LiteEnv {
+function liteEnvFrom(
+  config: Config,
+  ensured: EnsureLiteResult | undefined,
+  timeoutMs?: number,
+): LiteEnv {
   return {
-    binaryPath: config.binaryPath,
-    webclawHome: config.webclawHome || undefined,
-    liteBaseUrl: config.liteBaseUrl || undefined,
+    binaryPath: ensured?.binaryPath ?? resolveBinaryPath(config),
+    webclawHome: ensured?.webclawHome ?? resolveWebclawHome(config),
+    liteBaseUrl: ensured?.liteBaseUrl ?? resolveLiteBaseUrl(config),
     timeoutMs: timeoutMs ?? config.runTimeoutMs,
   }
 }
@@ -93,7 +110,7 @@ function parseJsonObject(text: string): Record<string, any> | undefined {
 }
 
 /**
- * Register webclaw tools and optional skill; optionally ensure install marker.
+ * Register webclaw tools and optional skill; optionally ensure lite at boot.
  */
 export function apply(ctx: Context, config: Config): void {
   if (config.registerSkill) {
@@ -103,20 +120,39 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
 
-  if (config.ensureOnBoot && existsSync(config.binaryPath)) {
-    void runLite(liteEnv(config), ['install']).then(result => {
-      if (result.code === 0) {
-        ctx.logger.info('webclaw: ensureOnBoot install ok')
-      } else {
-        ctx.logger.warn(
-          'webclaw: ensureOnBoot install failed: %s',
-          (result.stderr || result.stdout || 'non-zero').slice(0, 300),
-        )
-      }
-    })
+  const log = {
+    info: (msg: string, ...args: unknown[]) => ctx.logger.info(msg, ...args),
+    warn: (msg: string, ...args: unknown[]) => ctx.logger.warn(msg, ...args),
   }
 
-  const env = () => liteEnv(config)
+  let lastEnsure: EnsureLiteResult | undefined
+
+  const ready = async (): Promise<EnsureLiteResult> => {
+    lastEnsure = await ensureLite(config, log)
+    return lastEnsure
+  }
+
+  const env = async (timeoutMs?: number): Promise<LiteEnv> => {
+    const ensured = await ready()
+    return liteEnvFrom(config, ensured, timeoutMs)
+  }
+
+  if (config.ensureOnBoot) {
+    void ready()
+      .then(r => {
+        ctx.logger.info(
+          'webclaw: ensureOnBoot ok (downloaded=%s path=%s)',
+          String(r.downloaded),
+          r.binaryPath,
+        )
+      })
+      .catch((error: unknown) => {
+        ctx.logger.warn(
+          'webclaw: ensureOnBoot failed: %s',
+          error instanceof Error ? error.message : error,
+        )
+      })
+  }
 
   ctx.effect(
     () =>
@@ -124,7 +160,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_status',
           description:
-            'Check local webclaw-lite readiness (Chrome path, product, chromeOk). Prefer this before run when unsure the CLI is installed.',
+            'Check local webclaw-lite readiness (Chrome path, product, chromeOk). Prefer this before run when unsure the CLI is installed. On Windows, missing lite is auto-downloaded from GitHub Releases.',
           parameters: {
             run_id: {
               type: 'string',
@@ -137,32 +173,41 @@ export function apply(ctx: Context, config: Config): void {
               { type: 'text', text: JSON.stringify(value, null, 2) },
             ],
           },
-          async execute(args) {
+          async execute(args): Promise<Record<string, any>> {
+            let ensured: EnsureLiteResult
+            try {
+              ensured = await ready()
+            } catch (error) {
+              return {
+                ok: false,
+                product: 'webclaw-lite',
+                error: error instanceof Error ? error.message : String(error),
+                binaryPath: resolveBinaryPath(config),
+              }
+            }
             const argv = ['status']
             if (args.run_id?.trim()) {
               argv.push('--run-id', args.run_id.trim())
             }
-            const result = await runLite(env(), argv)
+            const result = await runLite(liteEnvFrom(config, ensured), argv)
             const text = `${result.stdout}\n${result.stderr}`.trim()
             const start = text.indexOf('{')
             const end = text.lastIndexOf('}')
-            let status: Record<string, unknown> = {
+            let status: Record<string, any> = {
               ok: false,
               exitCode: result.code,
               raw: text.slice(0, 2000),
             }
             if (start >= 0 && end > start) {
               try {
-                status = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
+                status = JSON.parse(text.slice(start, end + 1)) as Record<string, any>
               } catch {
                 /* keep raw */
               }
             }
-            return {
-              ...status,
-              exitCode: result.code ?? -1,
-              binaryPath: config.binaryPath,
-            }
+            status.exitCode = result.code ?? -1
+            status.binaryPath = ensured.binaryPath
+            return status
           },
         }),
       ),
@@ -228,7 +273,7 @@ export function apply(ctx: Context, config: Config): void {
             if (args.title?.trim()) {
               argv.push('--title', args.title.trim())
             }
-            const result = await runLite(env(), argv)
+            const result = await runLite(await env(), argv)
             const done = parseDoneEvent(result.stdout)
             const ok = done?.ok === true && result.code === 0
             return {
@@ -437,13 +482,17 @@ export function apply(ctx: Context, config: Config): void {
             if (typeof args.limit === 'number' && Number.isFinite(args.limit) && args.limit > 0) {
               argv.push('--limit', String(Math.floor(args.limit)))
             }
-            const result = await runLite(liteEnv(config, config.probeTimeoutMs), argv)
+            const ensured = await ready()
+            const result = await runLite(
+              liteEnvFrom(config, ensured, config.probeTimeoutMs),
+              argv,
+            )
             const text = `${result.stdout}\n${result.stderr}`.trim()
             const parsed = parseJsonObject(result.stdout) ?? parseJsonObject(text)
             if (parsed && parsed.type === 'probe') {
               Object.assign(parsed, {
                 exitCode: result.code ?? -1,
-                binaryPath: config.binaryPath,
+                binaryPath: ensured.binaryPath,
               })
               return parsed
             }
@@ -453,7 +502,7 @@ export function apply(ctx: Context, config: Config): void {
               exitCode: result.code ?? -1,
               error: (result.stderr || result.stdout || 'probe failed').slice(0, 500),
               raw: text.slice(0, 2000),
-              binaryPath: config.binaryPath,
+              binaryPath: ensured.binaryPath,
             }
           },
         }),
@@ -503,7 +552,7 @@ export function apply(ctx: Context, config: Config): void {
             if (args.run_dir?.trim()) {
               argv.push('--run-dir', args.run_dir.trim())
             }
-            const result = await runLite(env(), argv)
+            const result = await runLite(await env(), argv)
             return {
               exitCode: result.code ?? -1,
               stdout: result.stdout.trim().slice(0, 2000),
@@ -529,7 +578,7 @@ export function apply(ctx: Context, config: Config): void {
             ],
           },
           async execute() {
-            const result = await runLite(env(), ['cancel'])
+            const result = await runLite(await env(), ['cancel'])
             return {
               exitCode: result.code ?? -1,
               stdout: result.stdout.trim().slice(0, 1000),

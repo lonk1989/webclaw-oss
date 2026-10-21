@@ -4,11 +4,14 @@
 #   pnpm add @lonk1989/webclaw
 #   # or: pnpm add E:/Workspace/webclaw-oss/packages/webclaw
 #   pnpm dsh web --patch examples/cordis.patch.yml
+#
+# Defaults auto-download webclaw-lite from GitHub Releases on Windows.
+# For local cargo builds only, set binaryPath explicitly:
 
 - insert:
     - id: webclaw
       name: '@lonk1989/webclaw'
       config:
-        binaryPath: 'C:/path/to/webclaw-lite.exe'
         registerSkill: true
         recipesRel: recipes
+        # binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
