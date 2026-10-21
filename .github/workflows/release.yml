@@ -39,6 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: release-lite
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write # required for npm Trusted Publishing (OIDC)
     defaults:
       run:
         working-directory: packages/webclaw
@@ -46,12 +49,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          # Trusted Publishing needs npm >= 11.5.1; Node 24 ships a recent enough npm.
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
       - run: npm install
       - run: npm run build
-      - name: Publish to npm
+      - name: Publish to npm (OIDC)
+        # No NODE_AUTH_TOKEN / LONK secret — npm uses GitHub OIDC after Trusted Publisher is configured.
         run: npm publish --access public
-        env:
-          # Repository secret name on this repo is LONK (npm publish token).
-          NODE_AUTH_TOKEN: ${{ secrets.LONK }}
