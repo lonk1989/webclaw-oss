@@ -1,6 +1,6 @@
 {
   "name": "@lonk1989/webclaw",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "DeepSeek Harness plugin: deterministic Chinese-recipe browser RPA via webclaw-lite",
   "license": "MIT",
   "type": "module",
@@ -26,6 +26,10 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -35,14 +39,42 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
+    "build:host": "tsc -p tsconfig.json",
+    "build:client": "node scripts/build-client.mjs",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0",
+    "@deepseek-ai/dsh-client-locale": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-sidebar-documentpreview": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-skill": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1",
-    "@deepseek-ai/schemastery": ">=3.0.0"
+    "@deepseek-ai/dsh-util-workspace-path": ">=0.0.1-rc.1",
+    "@deepseek-ai/schemastery": ">=3.0.0",
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-locale": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-primitives": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-sidebar-documentpreview": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-slots": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-util-workspace-path": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -50,6 +82,8 @@
     "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
     "@deepseek-ai/schemastery": "^3.18.5",
     "@types/node": "^22.20.5",
+    "@types/react": "^18.3.31",
+    "esbuild": "^0.25.12",
     "typescript": "^5.9.3"
   },
   "engines": {
@@ -58,6 +92,16 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-sidebar-documentpreview",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-util-workspace-path"
+      ],
+      "platform": "web"
     }
   }
 }

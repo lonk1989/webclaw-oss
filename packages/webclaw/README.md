@@ -61,7 +61,7 @@ irm https://raw.githubusercontent.com/lonk1989/webclaw-oss/main/static/webclaw-l
 ## Model experience
 
 1. New site: `webclaw_probe` → short `webclaw_run` → freeze with `webclaw_freeze`
-2. User opens `recipes/*.webclaw` in Files for preview; edits via open-in-app or fs tools
+2. User opens `recipes/*.webclaw` in Files — the Client half tints the file icon and opens a log-style recipe preview (no engine patches)
 3. Replay: `webclaw_run(recipePath=…)` only
 4. Uploaded `.webclaw`: `recipePath` once, or `webclaw_import` into the library
 
