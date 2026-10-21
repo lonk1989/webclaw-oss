@@ -542,11 +542,20 @@ pub(crate) fn launch_debug_chrome_on(
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    if std::env::var_os("WEBCLAW_LITE").is_some() {
-        cmd.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // Break away from the parent's console/job so a short-lived CLI (DSH
+        // spawn) is not kept waiting on Chrome stdio / process-tree handles.
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
     }
+    // Always detach stdio: otherwise Node/DSH waiting on lite's pipes never sees
+    // EOF while the kept-alive Chrome still holds inherited handles.
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     cmd.spawn()
         .map_err(|e| format!("启动浏览器失败（{}）: {e}", exe.display()))
 }

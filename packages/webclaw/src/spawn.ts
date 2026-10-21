@@ -39,6 +39,9 @@ export function runLite(
     childEnv.WEBCLAW_LITE_BASE = env.liteBaseUrl.trim()
   }
 
+  // Ensure lite marks itself so Chrome is launched with null stdio (see chrome/mod.rs).
+  childEnv.WEBCLAW_LITE = childEnv.WEBCLAW_LITE || '1'
+
   return new Promise(resolve => {
     const child = spawn(env.binaryPath, [...args], {
       env: childEnv,
@@ -51,10 +54,27 @@ export function runLite(
     const finish = (code: number | null): void => {
       if (settled) return
       settled = true
+      // Do not wait for 'close': on Windows a kept-alive Chrome (伙伴浏览器) can
+      // keep inherited stdio handles open so 'close' never fires, while the lite
+      // process itself already exited — DSH then shows pending forever.
+      try {
+        child.stdout?.destroy()
+      } catch {
+        /* ignore */
+      }
+      try {
+        child.stderr?.destroy()
+      } catch {
+        /* ignore */
+      }
       resolve({ code, stdout, stderr })
     }
     const timer = setTimeout(() => {
-      child.kill()
+      try {
+        child.kill()
+      } catch {
+        /* ignore */
+      }
       finish(null)
     }, timeoutMs)
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -71,9 +91,9 @@ export function runLite(
       clearTimeout(timer)
       finish(null)
     })
-    child.on('close', code => {
+    child.on('exit', (code, signal) => {
       clearTimeout(timer)
-      finish(code)
+      finish(code ?? (signal ? null : 0))
     })
   })
 }
