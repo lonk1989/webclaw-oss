@@ -1,11 +1,15 @@
-﻿# Publishing webclaw-oss to the DSH community
+# Publishing webclaw-oss to the DSH community
 
 ## One-time setup
 
 1. Create a GitHub repository (suggested name `webclaw-oss`).
 2. Push this tree; add repository topic **`dsh-plugin`** (required for [DSH discoverability](https://github.com/topics/dsh-plugin)).
 3. Create npm scope/user that can publish **`@lonk1989/webclaw`**.
-4. Add repository secret `NPM_TOKEN` with publish rights.
+4. Prefer **npm Trusted Publishing** (OIDC) over long-lived tokens:
+   - On https://www.npmjs.com/package/@lonk1989/webclaw → **Settings** → **Trusted Publisher** → GitHub Actions  
+   - Organization/user: `lonk1989` · Repository: `webclaw-oss` · Workflow filename: `release.yml`  
+   - Allow `npm publish`  
+   - Do **not** use a Granular Token with “Bypass 2FA” for CI (npm warns against it).
 
 ## Release flow
 
