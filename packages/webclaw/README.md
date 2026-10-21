@@ -31,23 +31,24 @@ pnpm add @lonk1989/webclaw
     - id: webclaw
       name: '@lonk1989/webclaw'
       config:
-        # defaults: ensureOnBoot true → download lite from GitHub Releases (Windows)
+        # defaults: ensureOnBoot true → download lite (Windows, multi-source)
         registerSkill: true
         recipesRel: recipes
         # Optional overrides:
         # binaryPath: 'C:/path/to/webclaw-lite.exe'
-        # liteBaseUrl: 'https://github.com/lonk1989/webclaw-oss/releases/download/v0.1.7'
+        # liteBaseUrl: 'https://cdn.example.com/webclaw/v0.1.8'  # tried first
 ```
 
 ### webclaw-lite binary (Windows)
 
 You do **not** need to install lite by hand when using the defaults:
 
-1. Plugin boot (and first tool call) downloads  
-   `webclaw-lite-windows-x64.exe` from GitHub Releases for **this package version**
-2. Verifies the companion `.sha256`
-3. Installs to `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe`
+1. Plugin boot (and first tool call) downloads `webclaw-lite-windows-x64.exe` for **this package version**
+2. Sources (in order): non-GitHub `liteBaseUrl` → `WEBCLAW_LITE_MIRRORS` → built-in mirrors (`ghfast.top`, then `mirror.ghproxy.com`) → official GitHub (last, so CN users are not stuck waiting on a dead GitHub)
+3. Verifies the companion `.sha256`, then installs to `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe`
 4. Runs `webclaw-lite install` (Chrome probe + marker)
+
+Each source times out after ~60s before the next. Set `WEBCLAW_LITE_MIRRORS` to comma-separated release dirs or proxy prefixes if you need extra fallbacks.
 
 Non-Windows: set `binaryPath` to a locally built binary (Release assets are Windows-first for now), or build from `runtime/`.
 

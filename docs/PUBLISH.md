@@ -13,14 +13,15 @@
 
 ## Release flow
 
-Keep **npm `packages/webclaw` version** and the **git tag** in lockstep (e.g. package `0.1.7` → tag `v0.1.7`).  
+Keep **npm `packages/webclaw` version** and the **git tag** in lockstep (e.g. package `0.1.8` → tag `v0.1.8`).  
 The Cordis plugin auto-downloads  
-`https://github.com/lonk1989/webclaw-oss/releases/download/v{version}/webclaw-lite-windows-x64.exe`.
+`https://github.com/lonk1989/webclaw-oss/releases/download/v{version}/webclaw-lite-windows-x64.exe`  
+(with built-in mirror fallbacks for unstable GitHub access).
 
 ```sh
 # after bumping packages/webclaw/package.json version
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 GitHub Actions (`release.yml`) will:

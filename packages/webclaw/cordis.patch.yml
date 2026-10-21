@@ -15,4 +15,4 @@
         recipesRel: recipes
         # ensureOnBoot: true   # default
         # binaryPath: 'C:/path/to/webclaw-lite.exe'  # skip auto-download
-        # liteBaseUrl: 'https://github.com/lonk1989/webclaw-oss/releases/download/v0.1.7'
+        # liteBaseUrl: 'https://cdn.example.com/webclaw/v0.1.8'  # tried before GitHub/mirrors

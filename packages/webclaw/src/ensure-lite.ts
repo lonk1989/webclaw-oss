@@ -1,6 +1,7 @@
 /**
  * Bootstrap webclaw-lite from GitHub Releases (Windows x64).
  * npm ships only the Cordis plugin; the native CLI is downloaded on demand.
+ * Download tries config → official → env mirrors → built-in CN-friendly mirrors.
  */
 
 import { createHash } from 'node:crypto'
@@ -26,20 +27,31 @@ export const PLUGIN_VERSION = PKG.version
 const EXE_NAME = 'webclaw-lite-windows-x64.exe'
 const MANAGED_EXE = 'webclaw-lite.exe'
 const VERSION_STAMP = '.webclaw-lite-npm-version'
+const FETCH_TIMEOUT_MS = 60_000
 
 /** Sentinel / empty binaryPath → use managed `%LOCALAPPDATA%/webclaw/bin/…`. */
 const MANAGED_SENTINELS = new Set(['', 'webclaw-lite', 'webclaw-lite.exe'])
 
+/**
+ * Built-in mirrors that proxy the official GitHub Release directory.
+ * Each entry is a prefix: `${mirror}${officialPath}` where officialPath starts with https://github.com/...
+ */
+const BUILTIN_MIRROR_PREFIXES = [
+  'https://ghfast.top/',
+  'https://mirror.ghproxy.com/',
+] as const
+
 export interface EnsureLiteConfig {
   readonly binaryPath: string
   readonly webclawHome: string
-  /** Release directory prefix (no filename). Empty → GitHub download for this package version. */
+  /** Release directory prefix (no filename). Empty → multi-source default chain. */
   readonly liteBaseUrl: string
 }
 
 export interface EnsureLiteResult {
   readonly binaryPath: string
   readonly webclawHome: string
+  /** Base that succeeded (or preferred config/official when no download). */
   readonly liteBaseUrl: string
   readonly downloaded: boolean
 }
@@ -52,10 +64,78 @@ export type EnsureLog = {
 let inflight: Promise<EnsureLiteResult> | undefined
 
 /**
- * Default GitHub Releases directory for this plugin version (no trailing slash).
+ * Official GitHub Releases directory for this plugin version (no trailing slash).
  */
 export function defaultLiteBaseUrl(version = PLUGIN_VERSION): string {
   return `https://github.com/lonk1989/webclaw-oss/releases/download/v${version}`
+}
+
+function normalizeBase(url: string): string {
+  return url.trim().replace(/\/+$/, '')
+}
+
+function isGithubReleaseDir(url: string): boolean {
+  return /https?:\/\/github\.com\//i.test(url)
+}
+
+/**
+ * Candidate Release directory prefixes, ordered for try-in-order download.
+ * Direct github.com is last so CN users hit ghfast.top first (avoids a long dead wait).
+ * 1. config.liteBaseUrl when it is not github.com (self-hosted / CDN)
+ * 2. WEBCLAW_LITE_MIRRORS (comma-separated release dirs or proxy prefixes)
+ * 3. built-in mirrors (ghfast.top, then ghproxy) for each github primary
+ * 4. github.com primaries (custom liteBaseUrl if github, then official)
+ */
+export function candidateLiteBaseUrls(config: EnsureLiteConfig): string[] {
+  const official = defaultLiteBaseUrl()
+  const out: string[] = []
+  const seen = new Set<string>()
+  const push = (raw: string): void => {
+    const b = normalizeBase(raw)
+    if (!b || seen.has(b)) return
+    seen.add(b)
+    out.push(b)
+  }
+
+  const githubPrimaries: string[] = []
+  const custom = config.liteBaseUrl?.trim()
+  if (custom) {
+    const normalized = normalizeBase(custom)
+    if (isGithubReleaseDir(normalized)) {
+      githubPrimaries.push(normalized)
+    } else {
+      push(normalized)
+    }
+  }
+  githubPrimaries.push(official)
+
+  const envMirrors = process.env.WEBCLAW_LITE_MIRRORS?.trim()
+  if (envMirrors) {
+    for (const part of envMirrors.split(',')) {
+      const p = part.trim()
+      if (!p) continue
+      if (/^https?:\/\//i.test(p) && p.includes('github.com')) {
+        push(p)
+      } else if (/^https?:\/\//i.test(p)) {
+        const prefix = p.endsWith('/') ? p : `${p}/`
+        for (const primary of githubPrimaries) {
+          push(`${prefix}${primary}`)
+        }
+      }
+    }
+  }
+
+  for (const primary of githubPrimaries) {
+    for (const prefix of BUILTIN_MIRROR_PREFIXES) {
+      push(`${prefix}${primary}`)
+    }
+  }
+
+  for (const primary of githubPrimaries) {
+    push(primary)
+  }
+
+  return out
 }
 
 /**
@@ -102,12 +182,10 @@ export function resolveBinaryPath(config: EnsureLiteConfig): string {
 }
 
 /**
- * Release prefix used for download / WEBCLAW_LITE_BASE.
+ * Preferred Release prefix when no download runs (config or official).
  */
 export function resolveLiteBaseUrl(config: EnsureLiteConfig): string {
-  const custom = config.liteBaseUrl?.trim()
-  if (custom) return custom.replace(/\/+$/, '')
-  return defaultLiteBaseUrl()
+  return candidateLiteBaseUrls(config)[0] ?? defaultLiteBaseUrl()
 }
 
 function stampPath(home: string): string {
@@ -136,31 +214,35 @@ function parseSha256File(text: string): string {
   return hex.toLowerCase()
 }
 
-async function download(url: string): Promise<Buffer> {
-  const res = await fetch(url, {
-    redirect: 'follow',
-    headers: { 'user-agent': `webclaw-plugin/${PLUGIN_VERSION}` },
-  })
-  if (!res.ok) {
-    throw new Error(`download failed ${res.status} ${res.statusText}: ${url}`)
+async function download(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Buffer> {
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: ac.signal,
+      headers: { 'user-agent': `webclaw-plugin/${PLUGIN_VERSION}` },
+    })
+    if (!res.ok) {
+      throw new Error(`download failed ${res.status} ${res.statusText}: ${url}`)
+    }
+    return Buffer.from(await res.arrayBuffer())
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`download timed out after ${timeoutMs}ms: ${url}`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
   }
-  return Buffer.from(await res.arrayBuffer())
 }
 
-async function downloadManaged(
+async function downloadFromBase(
   home: string,
   baseUrl: string,
   log: EnsureLog,
-): Promise<string> {
-  if (process.platform !== 'win32') {
-    throw new Error(
-      'webclaw-lite auto-install currently supports Windows x64 only. ' +
-        'Build from source or set config.binaryPath to a local binary. ' +
-        'See https://github.com/lonk1989/webclaw-oss',
-    )
-  }
-
-  const exeUrl = `${baseUrl.replace(/\/+$/, '')}/${EXE_NAME}`
+): Promise<void> {
+  const exeUrl = `${normalizeBase(baseUrl)}/${EXE_NAME}`
   const shaUrl = `${exeUrl}.sha256`
   log.info('webclaw: downloading %s', exeUrl)
 
@@ -188,8 +270,39 @@ async function downloadManaged(
   }
   renameSync(tmp, dest)
   writeStamp(home, PLUGIN_VERSION)
-  log.info('webclaw: installed %s (%s)', dest, PLUGIN_VERSION)
-  return dest
+  log.info('webclaw: installed %s (%s) from %s', dest, PLUGIN_VERSION, baseUrl)
+}
+
+/**
+ * Try each candidate base until one succeeds; return the winning base.
+ */
+async function downloadManagedWithFallback(
+  home: string,
+  bases: readonly string[],
+  log: EnsureLog,
+): Promise<string> {
+  if (process.platform !== 'win32') {
+    throw new Error(
+      'webclaw-lite auto-install currently supports Windows x64 only. ' +
+        'Build from source or set config.binaryPath to a local binary. ' +
+        'See https://github.com/lonk1989/webclaw-oss',
+    )
+  }
+
+  const errors: string[] = []
+  for (const base of bases) {
+    try {
+      await downloadFromBase(home, base, log)
+      return base
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      log.warn('webclaw: source failed (%s): %s', base, msg.slice(0, 200))
+      errors.push(`${base}: ${msg}`)
+    }
+  }
+  throw new Error(
+    `webclaw-lite download failed from all sources:\n${errors.join('\n')}`,
+  )
 }
 
 async function runInstallMarker(
@@ -198,21 +311,28 @@ async function runInstallMarker(
   liteBaseUrl: string,
   log: EnsureLog,
 ): Promise<void> {
-  const result = await runLite(
-    {
-      binaryPath,
-      webclawHome: home,
-      liteBaseUrl,
-      timeoutMs: 120_000,
-    },
-    ['install'],
-  )
-  if (result.code === 0) {
-    log.info('webclaw: lite install marker ok')
-  } else {
+  try {
+    const result = await runLite(
+      {
+        binaryPath,
+        webclawHome: home,
+        liteBaseUrl,
+        timeoutMs: 120_000,
+      },
+      ['install'],
+    )
+    if (result.code === 0) {
+      log.info('webclaw: lite install marker ok')
+    } else {
+      log.warn(
+        'webclaw: lite install marker failed: %s',
+        (result.stderr || result.stdout || 'non-zero').slice(0, 300),
+      )
+    }
+  } catch (error) {
     log.warn(
-      'webclaw: lite install marker failed: %s',
-      (result.stderr || result.stdout || 'non-zero').slice(0, 300),
+      'webclaw: lite install marker error: %s',
+      error instanceof Error ? error.message : error,
     )
   }
 }
@@ -238,7 +358,8 @@ async function doEnsure(
   log: EnsureLog,
 ): Promise<EnsureLiteResult> {
   const home = resolveWebclawHome(config)
-  const liteBaseUrl = resolveLiteBaseUrl(config)
+  const bases = candidateLiteBaseUrls(config)
+  const preferredBase = bases[0] ?? defaultLiteBaseUrl()
   mkdirSync(join(home, 'bin'), { recursive: true })
 
   if (!usesManagedBinary(config.binaryPath)) {
@@ -249,14 +370,26 @@ async function doEnsure(
           'Install the CLI, or clear binaryPath to use GitHub Releases auto-install.',
       )
     }
-    await runInstallMarker(binaryPath, home, liteBaseUrl, log)
-    return { binaryPath, webclawHome: home, liteBaseUrl, downloaded: false }
+    await runInstallMarker(binaryPath, home, preferredBase, log)
+    return {
+      binaryPath,
+      webclawHome: home,
+      liteBaseUrl: preferredBase,
+      downloaded: false,
+    }
   }
 
   const dest = managedBinaryPath(home)
+  let liteBaseUrl = preferredBase
   let downloaded = false
   if (!existsSync(dest) || !stampMatches(home, PLUGIN_VERSION)) {
-    await downloadManaged(home, liteBaseUrl, log)
+    let tryBases = bases
+    if (process.env.SMOKE_FORCE_MIRROR === '1') {
+      // Skip official for mirror-path smoke; keep config custom if any.
+      tryBases = bases.filter(b => !b.startsWith('https://github.com/'))
+      if (tryBases.length === 0) tryBases = bases
+    }
+    liteBaseUrl = await downloadManagedWithFallback(home, tryBases, log)
     downloaded = true
   }
   await runInstallMarker(dest, home, liteBaseUrl, log)
