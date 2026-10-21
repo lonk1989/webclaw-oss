@@ -20,11 +20,11 @@ jobs:
           name: webclaw-lite-windows-x64
           path: target/release/webclaw-lite.exe
 
-  dsh-plugin:
+  webclaw-plugin:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/dsh-plugin
+        working-directory: packages/webclaw
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

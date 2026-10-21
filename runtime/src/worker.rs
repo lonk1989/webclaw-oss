@@ -226,8 +226,15 @@ fn load_recipe_text(cli: &CliArgs) -> Result<String, String> {
     if let Some(t) = &cli.recipe_text {
         return Ok(t.clone());
     }
-    let path = cli.recipe.as_ref().ok_or("无菜谱")?;
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("读菜谱失败: {e}"))?;
+    let input = cli.recipe.as_ref().ok_or("无菜谱")?;
+    let path = if is_lite() {
+        crate::lite_recipes::resolve_recipe_path(input)
+    } else {
+        input.clone()
+    };
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("读菜谱失败 {}: {e}", path.display()))?;
+    let raw = raw.strip_prefix('\u{feff}').unwrap_or(&raw);
     // 兼容旧 .webclaw 带头 ---
     if let Some(idx) = raw.find("\n---\n") {
         return Ok(raw[idx + 5..].to_string());
@@ -235,7 +242,7 @@ fn load_recipe_text(cli: &CliArgs) -> Result<String, String> {
     if let Some(idx) = raw.find("\r\n---\r\n") {
         return Ok(raw[idx + 7..].to_string());
     }
-    Ok(raw)
+    Ok(raw.to_string())
 }
 
 fn build_status_payload(run_id: &str) -> Result<serde_json::Value, String> {

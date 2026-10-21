@@ -1,6 +1,6 @@
 {
-  "name": "@lonk1989/dsh-plugin",
-  "version": "0.1.2",
+  "name": "@lonk1989/webclaw",
+  "version": "0.1.5",
   "description": "DeepSeek Harness plugin: deterministic Chinese-recipe browser RPA via webclaw-lite",
   "license": "MIT",
   "type": "module",
@@ -10,12 +10,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lonk1989/webclaw-oss.git",
-    "directory": "packages/dsh-plugin"
+    "directory": "packages/webclaw"
   },
   "keywords": [
+    "webclaw",
     "dsh-plugin",
     "deepseek-harness",
-    "webclaw",
     "browser-rpa",
     "recipe"
   ],

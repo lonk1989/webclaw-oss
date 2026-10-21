@@ -9,7 +9,7 @@ This repository is the open-source fork of webclaw for the [DeepSeek Harness](ht
 | Piece | Role |
 |-------|------|
 | `runtime/` | Rust **webclaw-lite** CLI — parse Chinese recipes, drive local Chrome via CDP, HITL for captcha/slider |
-| `packages/dsh-plugin/` | npm **`@lonk1989/dsh-plugin`** — Host tools + Skill that spawn lite |
+| `packages/webclaw/` | npm **`@lonk1989/webclaw`** — Host tools + Skill that spawn lite |
 
 Same recipe → same business path. Prefer fixing the recipe over inventing CSS selectors.
 
@@ -34,20 +34,20 @@ cargo build --release --bin webclaw-lite
 ### 2. Install the DSH plugin
 
 ```sh
-cd packages/dsh-plugin
+cd packages/webclaw
 npm install
 npm run build
-# or: npm install @lonk1989/dsh-plugin  (after publish)
+# or: npm install @lonk1989/webclaw  (after publish)
 ```
 
 ### 3. Mount in DSH
 
-See [examples/cordis.patch.yml](examples/cordis.patch.yml) and [packages/dsh-plugin/cordis.patch.yml](packages/dsh-plugin/cordis.patch.yml).
+See [examples/cordis.patch.yml](examples/cordis.patch.yml) and [packages/webclaw/cordis.patch.yml](packages/webclaw/cordis.patch.yml).
 
 Install into the **web profile** (not only `npm install -g`):
 
 ```sh
-dsh plugin --profile web add @lonk1989/dsh-plugin
+dsh plugin --profile web add @lonk1989/webclaw
 ```
 
 Mount with an **`insert:`** patch (a bare `- id:` only updates an existing row):
@@ -55,10 +55,11 @@ Mount with an **`insert:`** patch (a bare `- id:` only updates an existing row):
 ```yaml
 - insert:
     - id: webclaw
-      name: '@lonk1989/dsh-plugin'
+      name: '@lonk1989/webclaw'
       config:
         binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
         registerSkill: true
+        recipesRel: recipes
 ```
 
 ```sh
@@ -84,7 +85,7 @@ Ask the agent to run a recipe such as:
 
 ```text
 runtime/                 # Rust crate (lite-first, desktop feature opt-in)
-packages/dsh-plugin/     # @lonk1989/dsh-plugin
+packages/webclaw/        # @lonk1989/webclaw
 examples/                # sample recipes + cordis overlay
 skills/webclaw-lite/     # CLI Skill docs (source of truth also copied into plugin assets)
 ```

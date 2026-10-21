@@ -1,14 +1,7 @@
-﻿# Mounting webclaw for agents
-
-## DeepSeek Harness (recommended)
+﻿# Mount webclaw-lite in DeepSeek Harness
 
 1. Build or download `webclaw-lite`
-2. `npm install @lonk1989/dsh-plugin`
-3. Patch cordis with [examples/cordis.patch.yml](../../examples/cordis.patch.yml)
-4. Add GitHub topic `dsh-plugin` on the plugin repo for discovery
-
-Tools spawn the CLI; Skill teaches the recipe language.
-
-## Generic shell agents
-
-Copy this folder into the agent skills directory and grant shell access to `webclaw-lite`.
+2. `pnpm add @lonk1989/webclaw` (in the DSH workspace / web profile)
+3. Apply an `insert:` patch with `id: webclaw` and `name: '@lonk1989/webclaw'` (see `examples/cordis.patch.yml`)
+4. Set `binaryPath` to your `webclaw-lite` binary
+5. Add GitHub topic `dsh-plugin` on the plugin repo for discovery

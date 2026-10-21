@@ -1,0 +1,14 @@
+# Example overlay: mount @lonk1989/webclaw into a DSH profile.
+#
+# In the DeepSeek Harness workspace:
+#   pnpm add @lonk1989/webclaw
+#   # or: pnpm add E:/Workspace/webclaw-oss/packages/webclaw
+#   pnpm dsh web --patch path/to/this/file
+
+- insert:
+    - id: webclaw
+      name: '@lonk1989/webclaw'
+      config:
+        binaryPath: webclaw-lite
+        registerSkill: true
+        recipesRel: recipes

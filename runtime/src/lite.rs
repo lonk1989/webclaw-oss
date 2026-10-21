@@ -49,7 +49,10 @@ pub fn print_usage() {
 用法:
   webclaw-lite install
   webclaw-lite status [--run-id <id>]
-  webclaw-lite run --recipe <file.webclaw|txt> [--title 名称] [--params JSON]
+  webclaw-lite probe [--url URL] [--types 输入框,按钮,图标按钮,链接] [--search 关键词] [--limit 60]
+  webclaw-lite recipe save --name <stem> (--stdin | --file <path>) [--title 标题]
+  webclaw-lite recipe list
+  webclaw-lite run --recipe <file.webclaw|txt|name> [--title 名称] [--params JSON]
   webclaw-lite run --stdin [--title 名称] [--params JSON]
   webclaw-lite human-reply (--text CODE | --ok | --cancel) [--run-dir <run>]
   webclaw-lite cancel
@@ -62,7 +65,10 @@ pub fn print_usage() {
 
 说明:
   由 AI 助手按 SKILL.md 调用本 CLI；禁止用 Playwright 等重写步骤。
-  执行 stdout 为 JSONL（run_start / step_* / need_human / done）。内存采样不进 stdout。
+  编排期：probe 观察当前页 → 用返回指令拼短菜谱 → run 片段 → 再 probe（勿杀浏览器）。
+  冻结：recipe save 写入 <WEBCLAW_HOME>/recipes/<name>.webclaw（DSH 优先写工作区 recipes/）。
+  复跑期：只 run 完整菜谱（可用路径或 recipes 下的短名）；不要逐步 probe。
+  执行 stdout 为 JSONL（run_start / step_* / need_human / done）；probe/recipe 为单条 JSON。
   遇验证码：读 need_human 事件 → 向用户要码 → human-reply --text … → 继续等 JSONL。
   正在跑的任务卡住：另开进程执行 cancel（不要用 human-reply --cancel 代替）。
   产物在 <WEBCLAW_HOME>/runs/<runId>/downloads|documents。
@@ -83,6 +89,10 @@ pub fn print_usage() {
 pub fn ensure_lite_env() {
     std::env::set_var("WEBCLAW_WORKER", "1");
     std::env::set_var("WEBCLAW_LITE", "1");
+    // Multi-round authoring: probe ↔ short run share the same CDP browser.
+    if std::env::var_os("WEBCLAW_RESUME_BROWSER").is_none() {
+        std::env::set_var("WEBCLAW_RESUME_BROWSER", "1");
+    }
     // 本机勿默认 --no-sandbox
     if std::env::var_os("WEBCLAW_CDP_PORT").is_none() {
         std::env::set_var("WEBCLAW_CDP_PORT", "19222");
@@ -461,6 +471,32 @@ pub fn run_cli() {
                 }
             }
         }
+        "probe" => {
+            let code = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => match rt.block_on(crate::lite_probe::probe_cli(&args)) {
+                    Ok(()) => 0,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        2
+                    }
+                },
+                Err(e) => {
+                    eprintln!("{e}");
+                    2
+                }
+            };
+            std::process::exit(code);
+        }
+        "recipe" => match crate::lite_recipes::recipe_cli(&args) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(2);
+            }
+        },
         // 其余交给 worker 内核（run / update / last-log / accounts …）
         _ => crate::worker::run_cli(),
     }

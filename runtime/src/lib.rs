@@ -59,6 +59,8 @@ mod tray;
 mod updater;
 mod web_systems;
 pub mod lite;
+pub mod lite_probe;
+pub mod lite_recipes;
 pub mod worker;
 #[cfg(not(feature = "desktop"))]
 mod tauri_stub;

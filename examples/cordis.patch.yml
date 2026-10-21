@@ -1,18 +1,14 @@
-# Mount @lonk1989/dsh-plugin into DeepSeek Harness.
-# Must use `insert:` — a bare `- id:` only patches an existing row.
+# Mount @lonk1989/webclaw into DeepSeek Harness.
 #
-# Install into the DSH workspace (global npm install is NOT enough):
-#   cd <deepseek-harness>
-#   pnpm add @lonk1989/dsh-plugin
-#   # or: pnpm add E:/Workspace/webclaw-oss/packages/dsh-plugin
-#
-# Then:
-#   pnpm dsh web --patch E:/Workspace/webclaw-oss/examples/cordis.patch.yml
+# In the DeepSeek Harness workspace:
+#   pnpm add @lonk1989/webclaw
+#   # or: pnpm add E:/Workspace/webclaw-oss/packages/webclaw
+#   pnpm dsh web --patch examples/cordis.patch.yml
 
 - insert:
     - id: webclaw
-      name: '@lonk1989/dsh-plugin'
+      name: '@lonk1989/webclaw'
       config:
-        binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
-        ensureOnBoot: false
+        binaryPath: 'C:/path/to/webclaw-lite.exe'
         registerSkill: true
+        recipesRel: recipes

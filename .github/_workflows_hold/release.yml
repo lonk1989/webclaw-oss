@@ -41,7 +41,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     defaults:
       run:
-        working-directory: packages/dsh-plugin
+        working-directory: packages/webclaw
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

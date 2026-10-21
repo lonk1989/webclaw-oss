@@ -600,6 +600,51 @@ pub async fn scan_attached_page_for_dump(client: &CdpClient) -> Result<ProbePage
     Ok(result)
 }
 
+/// Authoring probe (webclaw-lite): type-filtered, optional search, truncated; no overlay / OOPIF.
+pub async fn scan_attached_page_for_authoring(
+    client: &CdpClient,
+    types: &[&str],
+    search: Option<&str>,
+    max_items: usize,
+) -> Result<ProbePageResult, String> {
+    let _ = client
+        .evaluate(&scripts::compose_clear_probe_overlay())
+        .await;
+    let _ = client
+        .evaluate(&scripts::compose_clear_click_text_probe_overlay())
+        .await;
+
+    let mut offsets = HashMap::new();
+    let type_filter = if types.is_empty() {
+        None
+    } else {
+        Some(types)
+    };
+    let frames = scan_client_contexts(client, None, search, &mut offsets, type_filter).await;
+    let mut result = merge_frame_scans(frames)?;
+    if let Ok(meta) = client
+        .evaluate("({url: location.href, title: document.title})")
+        .await
+    {
+        if result.url.is_none() {
+            result.url = meta.get("url").and_then(|v| v.as_str()).map(str::to_string);
+        }
+        if result.title.is_none() {
+            result.title = meta
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+        }
+    }
+    if result.items.len() > max_items {
+        result.items.truncate(max_items);
+    }
+    let _ = client
+        .evaluate(&scripts::compose_clear_probe_overlay())
+        .await;
+    Ok(result)
+}
+
 fn format_dump_item(it: &ProbeCandidate) -> String {
     let tag = it
         .tag
