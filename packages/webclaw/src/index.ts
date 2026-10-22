@@ -38,6 +38,11 @@ import {
   startAccountsUiServer,
   type AccountsUiHandle,
 } from './accounts-ui-server.js'
+import {
+  CREDENTIALS_SETUP_HINT,
+  listAccounts,
+  missingCredentialsForRecipe,
+} from './accounts-vault.js'
 import { registerBundledSkill } from './skill.js'
 
 /** Cordis plugin id. */
@@ -394,7 +399,9 @@ export function apply(ctx: Context, config: Config): void {
               const v = value as {
                 ok?: boolean
                 needParams?: boolean
+                needCredentials?: boolean
                 form?: string
+                setupHint?: string
                 run_dir?: string
                 error?: string
                 eventsTail?: string
@@ -402,6 +409,20 @@ export function apply(ctx: Context, config: Config): void {
               }
               if (v.needParams && v.form) {
                 return [{ type: 'text', text: v.form }]
+              }
+              if (v.needCredentials && v.setupHint) {
+                return [
+                  {
+                    type: 'text',
+                    text: [
+                      'webclaw_run: needCredentials（未启动浏览器）',
+                      v.error || '',
+                      v.setupHint,
+                    ]
+                      .filter(Boolean)
+                      .join('\n'),
+                  },
+                ]
               }
               const lines = [
                 v.ok ? 'webclaw_run: ok' : 'webclaw_run: failed',
@@ -452,6 +473,27 @@ export function apply(ctx: Context, config: Config): void {
             }
 
             const merged = applyParamOverrides(rawContent, overrides)
+
+            // Host-side gate (works even with older lite): do not open Chrome
+            // when「登录…」targets lack vault username/password.
+            const lite = await env()
+            const listed = await listAccounts(lite)
+            const missingCreds = missingCredentialsForRecipe(
+              merged.content,
+              listed.items,
+            )
+            if (missingCreds.length > 0) {
+              const names = missingCreds.map(m => m.name || m.query).join('、')
+              return {
+                ok: false,
+                needCredentials: true,
+                missing: missingCreds,
+                setupHint: CREDENTIALS_SETUP_HINT,
+                error: `缺少网站账号/密码：${names}（未启动浏览器）`,
+                recipePath: sourcePath ?? '',
+              }
+            }
+
             const path =
               declared.length > 0 || overrides
                 ? writeTempRecipe(merged.content)
@@ -461,7 +503,7 @@ export function apply(ctx: Context, config: Config): void {
             if (args.title?.trim()) {
               argv.push('--title', args.title.trim())
             }
-            const result = await runLite(await env(), argv)
+            const result = await runLite(lite, argv)
             const done = parseDoneEvent(result.stdout)
             // Prefer JSONL done (ok/fail are step counts). Exit 0 alone is not enough
             // if done is missing; exit non-zero with fail>0 is a real failure.
@@ -500,61 +542,54 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_accounts_status',
           description:
-            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). Secrets live in the local webclaw vault (DPAPI on Windows), not in DSH chat. If has_password is false, tell the user to run webclaw-lite accounts set in a local terminal; do NOT ask them to paste passwords into chat.',
+            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). If any needed site has has_password=false or empty username, STOP and tell the user to open DSH「设置 → 网站账号」(or webclaw-accounts.cmd). Do NOT probe, do NOT ask for passwords in chat, do NOT invent Playwright.',
           parameters: {},
           output: {
             schema: { type: 'object', additionalProperties: true },
-            render: (_args, value) => [
-              {
-                type: 'text',
-                text: typeof value === 'object'
-                  ? JSON.stringify(value, null, 2)
-                  : String(value),
-              },
-            ],
+            render: (_args, value) => {
+              const v = value as {
+                needCredentials?: boolean
+                setupHint?: string
+                items?: unknown
+              }
+              if (v.needCredentials && v.setupHint) {
+                return [
+                  {
+                    type: 'text',
+                    text: `${v.setupHint}\n\n${JSON.stringify(v.items ?? [], null, 2)}`,
+                  },
+                ]
+              }
+              return [
+                {
+                  type: 'text',
+                  text: typeof value === 'object'
+                    ? JSON.stringify(value, null, 2)
+                    : String(value),
+                },
+              ]
+            },
           },
           async execute(): Promise<Record<string, any>> {
             const ensured = await ready()
-            const result = await runLite(liteEnvFrom(config, ensured), [
-              'accounts',
-              'list',
-            ])
-            const text = `${result.stdout}\n${result.stderr}`.trim()
-            const parsed = parseJsonObject(result.stdout) ?? parseJsonObject(text)
-            if (parsed && parsed.type === 'accounts') {
-              const items = Array.isArray(parsed.items)
-                ? parsed.items.map((it: Record<string, unknown>) => ({
-                    id: String(it.id ?? ''),
-                    name: String(it.name ?? ''),
-                    url: String(it.url ?? ''),
-                    username: String(it.username ?? ''),
-                    has_password: Boolean(
-                      it.has_password ?? it.hasPassword ?? false,
-                    ),
-                  }))
-                : []
-              return {
-                ok: result.code === 0,
-                type: 'accounts',
-                items,
-                setupHint:
-                  '请用户打开 DSH「设置 → 网站账号」填写（密码只进本机 vault，不要让用户把密码发给你）。\n' +
-                  '也可双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。\n' +
-                  '入口 URL 可由部署方 config.systems 预制。菜谱只写「登录EHR系统」。',
-                binaryPath: ensured.binaryPath,
-              }
-            }
+            const listed = await listAccounts(liteEnvFrom(config, ensured))
+            const incomplete = listed.items.filter(
+              it => !it.username.trim() || !it.has_password,
+            )
             return {
-              ok: false,
+              ok: listed.ok,
               type: 'accounts',
-              error: redactSecrets(
-                (result.stderr || result.stdout || 'accounts list failed').slice(
-                  0,
-                  500,
-                ),
-              ),
-              setupHint:
-                '部署方可 config.systems 预制 URL；密码：webclaw-lite accounts set --id … --user … --password …',
+              items: listed.items,
+              needCredentials: incomplete.length > 0,
+              incomplete: incomplete.map(it => ({
+                id: it.id,
+                name: it.name,
+                reason: !it.username.trim()
+                  ? 'missing_username'
+                  : 'missing_password',
+              })),
+              setupHint: CREDENTIALS_SETUP_HINT,
+              error: listed.error || '',
               binaryPath: ensured.binaryPath,
             }
           },

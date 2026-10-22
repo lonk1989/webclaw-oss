@@ -13,6 +13,81 @@ export interface AccountStatus {
   has_password: boolean
 }
 
+/** Shown to the model when vault credentials are missing — never ask for passwords in chat. */
+export const CREDENTIALS_SETUP_HINT =
+  '请用户打开 DSH「设置 → 网站账号」填写账号和密码（只进本机 vault，勿把密码发给你）。\n' +
+  '也可双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd 打开本机表单。\n' +
+  '配好后 webclaw_accounts_status 应显示 has_password=true，再 webclaw_run。禁止 probe / 禁止在对话里要密码。'
+
+/**
+ * Extract「登录…」targets from a recipe body (Chinese/ASCII commas).
+ */
+export function extractLoginQueries(content: string): string[] {
+  const text = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const parts = text.split(/[，,]/).map(s => s.trim()).filter(Boolean)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const part of parts) {
+    if (!part.startsWith('登录')) continue
+    const q = part.slice('登录'.length).trim()
+    if (!q || seen.has(q)) continue
+    seen.add(q)
+    out.push(q)
+  }
+  return out
+}
+
+function accountMatchesQuery(item: AccountStatus, query: string): boolean {
+  const q = query.trim().toLowerCase().replace(/系统$/u, '')
+  const id = item.id.toLowerCase()
+  const name = item.name.toLowerCase().replace(/系统$/u, '')
+  if (id === query.trim().toLowerCase() || name === q) return true
+  if (q.includes('ehr') && id === 'ehr') return true
+  if (q.includes('mes') && (id === 'old-mes' || id === 'mes')) return true
+  if (q === 'oa' && id === 'oa') return true
+  if (name.includes(q) || q.includes(name)) return true
+  return false
+}
+
+/**
+ * Login steps that lack username or password in the local vault.
+ */
+export function missingCredentialsForRecipe(
+  content: string,
+  items: readonly AccountStatus[],
+): Array<{ query: string; id: string; name: string; url: string; reason: string }> {
+  const missing: Array<{
+    query: string
+    id: string
+    name: string
+    url: string
+    reason: string
+  }> = []
+  for (const query of extractLoginQueries(content)) {
+    const hit = items.find(it => accountMatchesQuery(it, query))
+    if (!hit) {
+      missing.push({
+        query,
+        id: '',
+        name: query,
+        url: '',
+        reason: 'no_vault_entry',
+      })
+      continue
+    }
+    if (!hit.username.trim() || !hit.has_password) {
+      missing.push({
+        query,
+        id: hit.id,
+        name: hit.name,
+        url: hit.url,
+        reason: !hit.username.trim() ? 'missing_username' : 'missing_password',
+      })
+    }
+  }
+  return missing
+}
+
 function parseJsonObject(text: string): Record<string, unknown> | undefined {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')

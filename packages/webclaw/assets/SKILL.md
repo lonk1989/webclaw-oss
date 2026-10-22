@@ -21,7 +21,7 @@ Deterministic browser RPA driven by **Chinese natural-language recipes** stored 
 | Points at `recipes/*.webclaw` or `@…webclaw` | Same as above (param form if declared) | Probe “to be safe”; re-author |
 | Asks to **write/discover** a new flow on an unknown site | Authoring: `webclaw_probe` ↔ short `webclaw_run` | Invent labels; Playwright |
 | Run **failed** mid-way | Diagnose with **one** probe (optional), **edit** the recipe, then re-run **full** body | Resume by probing every remaining step |
-| Login / 网站账号 / 密码 | `webclaw_accounts_status`; if missing, tell user to run **local** `webclaw-lite accounts set` in a terminal | Ask for password in chat; write `输入密码=…` into recipes; expand `{{ehr.密码}}` into files |
+| Login / 网站账号 / 密码 | `webclaw_accounts_status`; if `needCredentials` / `has_password=false`, **STOP** — tell user **设置 → 网站账号** (or `webclaw-accounts.cmd`). Do not probe. | Ask for password in chat; probe; Playwright; `输入密码=…` |
 
 **Rule of thumb:** Replay finishes in one run call (or two when params need confirmation)—not dozens of probe rounds. **Passwords never enter DSH chat.**
 
@@ -56,7 +56,7 @@ DSH chat goes to the model over the network. **Treat passwords as toxic in chat.
 
 Login URLs may be prefilled by the deployer's cordis `config.systems`. Passwords: tell the user to open **Settings → 网站账号** in DSH (local form; never through chat), or double-click `%LOCALAPPDATA%\webclaw\bin\webclaw-accounts.cmd`.
 
-If login fails with “还没有登录账号”, point at that settings page — do **not** ask “请把密码发给我”.
+If `webclaw_run` returns `needCredentials`, or `webclaw_accounts_status` shows `has_password=false` for EHR/MES: **stop the automation**, show the setup hint, and wait. Do **not** probe, do **not** open about:blank, do **not** ask “请把密码发给我”.
 
 ## Replay (default path)
 

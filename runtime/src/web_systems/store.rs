@@ -744,9 +744,9 @@ pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
     match matches.len() {
         0 => {
             if crate::run_sink::worker_mode() {
-                // DSH / lite：密码不得进对话。提示本机 CLI，勿让模型向用户索要明文密码。
+                // DSH / lite：密码不得进对话。引导本机「设置 → 网站账号」表单。
                 Err(format!(
-                    "还没有「{query}」的登录账号。部署方可用 cordis config.systems / accounts ensure 预制登录 URL；账号密码请在本机终端配置（勿发给助手）：webclaw-lite accounts set --id <id> --url <登录页> --user <账号> --password <密码>；然后 webclaw_accounts_status 确认 has_password=true 再跑。菜谱只写「登录{query}」，不要写「输入密码=…」。"
+                    "还没有「{query}」的登录账号。请用户打开 DSH「设置 → 网站账号」或双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd 填写（勿把密码发给助手）；webclaw_accounts_status 确认 has_password=true 后再跑。菜谱只写「登录{query}」，不要写「输入密码=…」。"
                 ))
             } else {
                 Err(format!(
