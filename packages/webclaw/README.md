@@ -65,7 +65,7 @@ irm https://raw.githubusercontent.com/lonk1989/webclaw-oss/main/static/webclaw-l
 ## Model experience
 
 1. **Default / replay:** user pastes a full recipe or points at `.webclaw` → `webclaw_run` — never probe step-by-step
-2. **参数 form:** recipes like `参数公司=…，参数月份=…` (see `examples/整理6月考勤.webclaw`) → first `webclaw_run` returns `needParams` (no browser yet) → model shows the fields → user edits or says「用默认」→ second `webclaw_run` with `paramsConfirmed=true` and optional `params` JSON. Config: `requireParamConfirm` (default true)
+2. **参数 form:** prefab `参数公司=…，参数月份=…` values are **placeholders** (see `examples/整理6月考勤.webclaw`) → first `webclaw_run` returns `needParams` (no browser yet) → model shows the fields → user edits or says「用默认」→ second `webclaw_run` with `paramsConfirmed=true` and optional `params` JSON. Never silently use recipe defaults. Config: `requireParamConfirm` (default true)
 3. New unknown site (no complete recipe): `webclaw_probe` → short `webclaw_run` → `webclaw_freeze`
 4. User opens `recipes/*.webclaw` in Files — Client tints the icon and shows a log-style preview
 5. Uploaded `.webclaw`: `recipePath` once (with param confirm if needed), or `webclaw_import` into the library
@@ -105,7 +105,7 @@ That launcher is created on plugin boot. A `webclaw-lite.cmd` wrapper with an ab
 
 Config knobs: `accountsUi` (default true), `accountsUiPort` (default 19229).
 
-Recipes keep alias login only, e.g. `登录EHR系统`. The agent may call `webclaw_accounts_status` (no secrets); it must never ask you to paste a password into the conversation.
+Recipes keep alias login only, e.g. `登录EHR系统`. Missing password does **not** block opening the site (SSO / existing Chrome session may work); the login step opens the URL first and only fails if the page still needs a form fill. The agent may call `webclaw_accounts_status` (no secrets); it must never ask you to paste a password into the conversation.
 
 ## License
 

@@ -175,13 +175,16 @@ async function ensureConfiguredSystems(
 }
 
 function formatParamForm(params: readonly RecipeParamKv[]): string {
-  const rows = params.map(p => `- ${p.name}: ${p.value}`)
+  const rows = params.map(p => `- ${p.name}：${p.value || '（空）'}`)
   return [
-    '【菜谱参数表单 — 请展示给用户确认/修改后再跑】',
+    '【请先确认参数 — 菜谱里的是占位/默认值，不要直接拿来跑】',
+    '',
+    '请把下表展示给用户，请他们修改或回复「用默认」：',
     ...rows,
     '',
-    '用户确认后再次调用 webclaw_run：传入 params（JSON，可改值）且 paramsConfirmed=true。',
-    '用户说「用默认」时：传 paramsConfirmed=true，params 可省略或传原值。',
+    '用户回复后再次 webclaw_run：paramsConfirmed=true；若改了值再传 params JSON（如 {"公司":"山西阳泉","月份":"2026-07"}）。',
+    '用户说「用默认」：paramsConfirmed=true，params 可省略。',
+    '确认前禁止 paramsConfirmed=true，禁止静默用占位值开跑。',
   ].join('\n')
 }
 
@@ -366,7 +369,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_run',
           description:
-            'Execute a Chinese natural-language browser recipe via webclaw-lite in ONE call. If the user already gave a full recipe (many ， steps) or a .webclaw path, pass the ENTIRE body as `recipe` or use `recipePath`—do NOT probe or split into short segments. When the recipe declares 参数名=值, the first call returns needParams (show the form to the user); only after they confirm call again with paramsConfirmed=true (and optional params JSON overrides). No CSS/Playwright.',
+            'Execute a Chinese natural-language browser recipe via webclaw-lite in ONE call. Full recipe/.webclaw → pass ENTIRE body (never probe step-by-step). Prefab 参数名=值 are PLACEHOLDERS: first call returns needParams — show form, wait for edit or「用默认」, then call again with paramsConfirmed=true (optional params JSON). Missing site password does NOT block: still run to open the page; only guide Settings if login fill fails. No CSS/Playwright.',
           parameters: {
             recipe: {
               type: 'string',
@@ -399,7 +402,6 @@ export function apply(ctx: Context, config: Config): void {
               const v = value as {
                 ok?: boolean
                 needParams?: boolean
-                needCredentials?: boolean
                 form?: string
                 setupHint?: string
                 run_dir?: string
@@ -410,25 +412,12 @@ export function apply(ctx: Context, config: Config): void {
               if (v.needParams && v.form) {
                 return [{ type: 'text', text: v.form }]
               }
-              if (v.needCredentials && v.setupHint) {
-                return [
-                  {
-                    type: 'text',
-                    text: [
-                      'webclaw_run: needCredentials（未启动浏览器）',
-                      v.error || '',
-                      v.setupHint,
-                    ]
-                      .filter(Boolean)
-                      .join('\n'),
-                  },
-                ]
-              }
               const lines = [
                 v.ok ? 'webclaw_run: ok' : 'webclaw_run: failed',
                 v.recipePath ? `recipePath: ${v.recipePath}` : '',
                 v.run_dir ? `run_dir: ${v.run_dir}` : '',
                 v.error ? `error: ${v.error}` : '',
+                v.setupHint ? v.setupHint : '',
                 v.eventsTail ? v.eventsTail.slice(-4000) : '',
               ].filter(Boolean)
               return [{ type: 'text', text: lines.join('\n') }]
@@ -474,25 +463,13 @@ export function apply(ctx: Context, config: Config): void {
 
             const merged = applyParamOverrides(rawContent, overrides)
 
-            // Host-side gate (works even with older lite): do not open Chrome
-            // when「登录…」targets lack vault username/password.
+            // Soft status only — never block open for missing password (SSO / session OK).
             const lite = await env()
             const listed = await listAccounts(lite)
             const missingCreds = missingCredentialsForRecipe(
               merged.content,
               listed.items,
             )
-            if (missingCreds.length > 0) {
-              const names = missingCreds.map(m => m.name || m.query).join('、')
-              return {
-                ok: false,
-                needCredentials: true,
-                missing: missingCreds,
-                setupHint: CREDENTIALS_SETUP_HINT,
-                error: `缺少网站账号/密码：${names}（未启动浏览器）`,
-                recipePath: sourcePath ?? '',
-              }
-            }
 
             const path =
               declared.length > 0 || overrides
@@ -511,6 +488,19 @@ export function apply(ctx: Context, config: Config): void {
               done != null
                 ? done.ok === true && (result.code === 0 || result.code == null)
                 : result.code === 0
+            const errorText =
+              done?.error ||
+              (ok
+                ? ''
+                : (result.stderr ||
+                    (done
+                      ? `run failed (ok=${done.okCount ?? '?'}, fail=${done.fail ?? '?'})`
+                      : 'run failed: no done event')
+                  ).slice(0, 500))
+            const needsCredHint =
+              !ok &&
+              missingCreds.length > 0 &&
+              /账号|密码|网站账号|凭据/u.test(errorText)
             return {
               ok,
               exitCode: result.code ?? -1,
@@ -518,15 +508,9 @@ export function apply(ctx: Context, config: Config): void {
               fail: done?.fail ?? null,
               run_dir: done?.run_dir ?? '',
               params: paramsJson(merged.params),
-              error:
-                done?.error ||
-                (ok
-                  ? ''
-                  : (result.stderr ||
-                      (done
-                        ? `run failed (ok=${done.okCount ?? '?'}, fail=${done.fail ?? '?'})`
-                        : 'run failed: no done event')
-                    ).slice(0, 500)),
+              missingCredentials: missingCreds.length > 0 ? missingCreds : undefined,
+              setupHint: needsCredHint ? CREDENTIALS_SETUP_HINT : undefined,
+              error: errorText,
               eventsTail: redactSecrets(result.stdout.slice(-8000)),
               recipePath: path,
             }
@@ -542,24 +526,11 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_accounts_status',
           description:
-            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). If any needed site has has_password=false or empty username, STOP and tell the user to open DSH「设置 → 网站账号」(or webclaw-accounts.cmd). Do NOT probe, do NOT ask for passwords in chat, do NOT invent Playwright.',
+            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). Missing password is OK to still webclaw_run (open page / SSO / existing session). Only after a login step fails for credentials, guide user to DSH「设置 → 网站账号」(or webclaw-accounts.cmd). Do NOT ask for passwords in chat.',
           parameters: {},
           output: {
             schema: { type: 'object', additionalProperties: true },
             render: (_args, value) => {
-              const v = value as {
-                needCredentials?: boolean
-                setupHint?: string
-                items?: unknown
-              }
-              if (v.needCredentials && v.setupHint) {
-                return [
-                  {
-                    type: 'text',
-                    text: `${v.setupHint}\n\n${JSON.stringify(v.items ?? [], null, 2)}`,
-                  },
-                ]
-              }
               return [
                 {
                   type: 'text',
@@ -580,7 +551,8 @@ export function apply(ctx: Context, config: Config): void {
               ok: listed.ok,
               type: 'accounts',
               items: listed.items,
-              needCredentials: incomplete.length > 0,
+              /** Soft advisory only — does NOT mean block webclaw_run. */
+              incompleteCredentials: incomplete.length > 0,
               incomplete: incomplete.map(it => ({
                 id: it.id,
                 name: it.name,
@@ -588,7 +560,7 @@ export function apply(ctx: Context, config: Config): void {
                   ? 'missing_username'
                   : 'missing_password',
               })),
-              setupHint: CREDENTIALS_SETUP_HINT,
+              setupHint: incomplete.length > 0 ? CREDENTIALS_SETUP_HINT : '',
               error: listed.error || '',
               binaryPath: ensured.binaryPath,
             }

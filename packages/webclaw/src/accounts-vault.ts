@@ -13,11 +13,15 @@ export interface AccountStatus {
   has_password: boolean
 }
 
-/** Shown to the model when vault credentials are missing — never ask for passwords in chat. */
+/**
+ * Soft hint when login fill fails for lack of vault credentials.
+ * Do NOT use this to block opening the site — many sites work via SSO / existing session.
+ * Never ask for passwords in chat.
+ */
 export const CREDENTIALS_SETUP_HINT =
-  '请用户打开 DSH「设置 → 网站账号」填写账号和密码（只进本机 vault，勿把密码发给你）。\n' +
-  '也可双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd 打开本机表单。\n' +
-  '配好后 webclaw_accounts_status 应显示 has_password=true，再 webclaw_run。禁止 probe / 禁止在对话里要密码。'
+  '站点不一定需要账号密码（可能已登录或 SSO）。应先 webclaw_run 打开页面。\n' +
+  '仅当登录步明确要求填表且本地无凭据时：请用户打开 DSH「设置 → 网站账号」填写（只进本机 vault，勿把密码发给你）；\n' +
+  '也可双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。禁止 probe / 禁止在对话里要密码。'
 
 /**
  * Extract「登录…」targets from a recipe body (Chinese/ASCII commas).

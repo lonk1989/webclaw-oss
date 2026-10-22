@@ -3639,15 +3639,13 @@ return { ok: true, delegate: 'rust_close_tab', message: '将由 CDP 关闭当前
 "#;
 
 pub const LOGIN_SYSTEM: &str = r#"
-// login-system-v6 — v5 + 会话有效直达业务页时视为已登录（勿因无表单报错中断）
+// login-system-v7 — 先由 Rust 打开登录页；无账号密码时仍可走已登录会话；
+// 仅当页面需要填表登录时才要求 vault 凭据（站点不一定都要密码）。
 const cred = ctx.credentials || {};
 const username = (cred.username || '').trim();
 const password = (cred.password || '').trim();
 const systemName = (cred.systemName || cred.systemId || ctx.args || '').trim();
 const loginUrlHint = (cred.loginUrl || '').trim().toLowerCase();
-if (!username || !password) {
-  return { ok: false, error: '未配置登录账号或密码，请打开「网站账号设置」维护后重试' };
-}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const normUiText = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -3860,6 +3858,14 @@ if (!looksLikeLoginForm()) {
     systemName,
     username,
     message: '已处于登录态，跳过填表（无登录表单，已进入业务页）',
+  };
+}
+
+// 需要填表时才校验凭据（页面已打开；勿在打开前因缺密码拦截整次 run）
+if (!username || !password) {
+  return {
+    ok: false,
+    error: '已打开登录页，但本地未配置账号或密码。请用户打开 DSH「设置 → 网站账号」或双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd 填写后再重试（勿把密码发给助手）',
   };
 }
 

@@ -1,7 +1,6 @@
 //! 无 UI 的 webclaw-worker：伙伴空间 / Linux 无头 CDP 执行入口。
 
 use crate::captcha;
-use crate::recipe::{parse_recipe_steps, apply_recipe_params};
 use crate::run_sink::{self, FanoutRunSink, JsonlRunSink, RunEvent};
 use crate::task_run::TaskControl;
 use std::collections::HashMap;
@@ -372,41 +371,8 @@ async fn run_recipe_async_inner(
         }
     }
 
-    // 预检登录账号（与桌面 executor 前的缺账提示一致）
-    let preview = apply_recipe_params(&content_raw, &cli.params)?;
-    let preview_content = crate::web_systems::substitute_web_system_vars(&preview.0)?;
-    let preview_steps = if preview_content.trim().is_empty() {
-        Vec::new()
-    } else {
-        parse_recipe_steps(&preview_content)?
-    };
-    let login_queries: Vec<String> = preview_steps
-        .iter()
-        .filter(|s| s.keyword == "登录")
-        .map(|s| s.args.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let missing = crate::web_systems::missing_logins_for_queries(&login_queries)?;
-    if !missing.is_empty() {
-        run_sink::emit_event(RunEvent::NeedAccounts {
-            systems: missing
-                .iter()
-                .map(|m| crate::run_sink::NeedAccountItem {
-                    id: m.id.clone(),
-                    name: m.name.clone(),
-                    url: m.url.clone(),
-                })
-                .collect(),
-        });
-        let names: Vec<_> = missing.iter().map(|m| m.name.as_str()).collect();
-        run_sink::emit_event(RunEvent::Done {
-            ok: 0,
-            fail: 1,
-            error: Some(format!("缺少网站账号：{}", names.join("、"))),
-            run_dir: None,
-        });
-        return Err("recipe failed".into());
-    }
+    // 不因缺账号/密码预检拦截：站点可能已有会话或不需要密码。
+    // 「登录」步会先打开入口 URL；仅当页面需要填表且 vault 无凭据时再失败提示。
 
     let task_id = task_id;
     let control = TaskControl::new();
