@@ -19,9 +19,13 @@ function normalizeRecipeText(content: string): string {
 /**
  * Split recipe into step segments on Chinese/ASCII commas.
  * Escape sequences `\,` `\，` keep the comma literal (same idea as runtime).
+ *
+ * Newlines become `，` (not empty): otherwise
+ * `参数原因=家中有事\n登录EHR系统` collapses to `参数原因=家中有事登录EHR系统`
+ * and the login step is lost.
  */
 export function splitRecipeSteps(content: string): string[] {
-  const text = normalizeRecipeText(content).replace(/\n+/g, '')
+  const text = normalizeRecipeText(content).replace(/\n+/g, '，')
   if (!text) return []
   const steps: string[] = []
   let buf = ''
@@ -63,7 +67,12 @@ export function extractRecipeParams(content: string): RecipeParamKv[] {
     const eq = body.indexOf('=')
     if (eq <= 0) continue
     const name = body.slice(0, eq).trim()
-    const value = body.slice(eq + 1).trim()
+    // Drop glued verbs from older newline bugs: 家中有事登录EHR系统 → 家中有事
+    let value = body.slice(eq + 1).trim()
+    value = value.replace(
+      /(?<=[\u4e00-\u9fffA-Za-z0-9])(登录|打开|点击|输入|等待)[\u4e00-\u9fffA-Za-z0-9#{}={{}}\s_-]*$/u,
+      '',
+    ).trim()
     if (!name || name.includes('.')) continue
     if (!map.has(name)) order.push(name)
     map.set(name, value)
@@ -103,6 +112,33 @@ export function mergeParamsIntoContent(
 }
 
 /**
+ * If a bad split once glued `登录…` into a 参数 value and then stripped it,
+ * recover login (and following) steps from the raw recipe.
+ */
+export function recoverLostActionSteps(
+  rawContent: string,
+  mergedContent: string,
+): string {
+  const rawSteps = splitRecipeSteps(rawContent)
+  const mergedSteps = splitRecipeSteps(mergedContent)
+  const rawActions = rawSteps.filter(
+    s => !s.startsWith('参数') || s.startsWith('动态参数'),
+  )
+  const mergedActions = mergedSteps.filter(
+    s => !s.startsWith('参数') || s.startsWith('动态参数'),
+  )
+  const rawHasLogin = rawActions.some(s => s.startsWith('登录'))
+  const mergedHasLogin = mergedActions.some(s => s.startsWith('登录'))
+  if (!rawHasLogin || mergedHasLogin) return mergedContent
+  const params = extractRecipeParams(mergedContent)
+  const prefix =
+    params.length > 0
+      ? params.map(p => `参数${p.name}=${p.value}`).join('，') + '，'
+      : ''
+  return `${prefix}${rawActions.join('，')}`
+}
+
+/**
  * Apply overrides onto declared params (declared order preserved; new keys appended).
  */
 export function applyParamOverrides(
@@ -132,7 +168,11 @@ export function applyParamOverrides(
       seen.add(name)
     }
   }
-  return { content: mergeParamsIntoContent(content, params), params }
+  const merged = mergeParamsIntoContent(content, params)
+  return {
+    content: recoverLostActionSteps(content, merged),
+    params,
+  }
 }
 
 /** Parse tool `params` arg: JSON object string or already-plain record. */

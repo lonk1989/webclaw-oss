@@ -16,8 +16,8 @@ export const zh = {
   codeBlockTitle: '菜谱',
   wrap: '换行',
   unwrap: '不换行',
-  paramsTitle: '可改参数（默认值）',
-  paramsHint: '菜谱参数是占位/默认值；有 参数…= 时先确认或「用默认」。业务指令（如请假）用户已给齐字段则直接跑，勿反复追问。',
+  paramsTitle: '可改参数（多为占位，请编辑）',
+  paramsHint: '有 参数…= 时先展示一张可编辑表请用户改完再跑；勿逐项追问。仅用户明确说「用默认」才可不改。本轮已给齐字段则可直接跑。',
 }
 
 /** English dictionary with the same keys. */
@@ -28,8 +28,8 @@ export const en = {
   codeBlockTitle: 'Recipe',
   wrap: 'Wrap',
   unwrap: 'Unwrap',
-  paramsTitle: 'Editable params (defaults)',
-  paramsHint: 'On run, the agent will show a param form in chat before starting.',
+  paramsTitle: 'Editable params (usually placeholders)',
+  paramsHint: 'On run, show one editable table for the user to change values. Do not interview field-by-field;「use defaults」only if asked.',
 } satisfies Record<keyof typeof zh, string>
 
 export const NS = 'webclawPreview'

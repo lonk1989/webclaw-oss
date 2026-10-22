@@ -65,7 +65,7 @@ irm https://raw.githubusercontent.com/lonk1989/webclaw-oss/main/static/webclaw-l
 ## Model experience
 
 1. **Default / replay:** user pastes a full recipe or points at `.webclaw` → `webclaw_run` — never probe step-by-step
-2. **参数 form:** prefab `参数公司=…，参数月份=…` values are **placeholders** (see `examples/整理6月考勤.webclaw`) → first `webclaw_run` returns `needParams` (no browser yet) → model shows the fields → user edits or says「用默认」→ second `webclaw_run` with `paramsConfirmed=true` and optional `params` JSON. Never silently use recipe defaults. Config: `requireParamConfirm` (default true)
+2. **参数 form:** prefab `参数公司=…，参数月份=…` are **placeholders users usually must edit** (see `examples/整理6月考勤.webclaw`) → first `webclaw_run` returns `needParams` → show **one editable table** (no verbal Q&A) → user edits → second `webclaw_run` with `paramsConfirmed=true` + `params` JSON.「用默认」only if the user explicitly asks. Config: `requireParamConfirm` (default true)
 3. New unknown site (no complete recipe): `webclaw_probe` → short `webclaw_run` → `webclaw_freeze`
 4. User opens `recipes/*.webclaw` in Files — Client tints the icon and shows a log-style preview
 5. Uploaded `.webclaw`: `recipePath` once (with param confirm if needed), or `webclaw_import` into the library

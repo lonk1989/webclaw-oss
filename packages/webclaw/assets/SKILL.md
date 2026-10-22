@@ -2,10 +2,10 @@
 name: webclaw-lite
 description: >-
   Local webclaw-lite browser RPA. DEFAULT: full recipe → webclaw_run once.
-  Prefab 参数…= → needParams confirm or「用默认」. Feishu/SSO sites need URL
-  only (no password). Never ask passwords, never invent accounts-set CLI,
-  never probe a complete recipe, never ask extra confirm questions when the
-  user already gave the fields. Never Playwright/CSS.
+  Prefab 参数…= → needParams: show editable table once (users usually must
+  change values);「用默认」only if user says so. No field-by-field interview.
+  Feishu/SSO: URL only, no password. Never invent accounts-set CLI / probe a
+  complete recipe / Playwright.
 ---
 
 # webclaw-lite
@@ -17,8 +17,8 @@ Deterministic browser RPA driven by **Chinese natural-language recipes** stored 
 | User input | What you MUST do | Forbidden |
 |------------|------------------|-----------|
 | Pastes / attaches a **complete** recipe (many `，` steps, or `.webclaw`) | `webclaw_run` with the **entire** body / `recipePath` | Split into steps; `webclaw_probe` between steps |
-| Recipe declares **`参数…=`** (prefab placeholders) | First `webclaw_run` → `needParams` → show form → edit or「用默认」→ `paramsConfirmed=true` | Silently use placeholders; skip form |
-| User already gave business fields (e.g. 请假：年假 / 日期 / 原因) | Put them into `params` / recipe and **run immediately** | Re-ask the same table; ask「是否确认」「看下浏览器」before running |
+| Recipe declares **`参数…=`** (prefab placeholders) | First `webclaw_run` → `needParams` → **show editable table once** → user edits → `paramsConfirmed=true` + `params` JSON | Silently use placeholders; skip form; push「用默认」; ask each field verbally |
+| User already gave **all** business fields in the same turn | Merge into `params` and run (`paramsConfirmed=true`) | Re-interview; ask「是否确认」「看下浏览器」before running |
 | Points at `recipes/*.webclaw` | Same as above | Probe “to be safe” |
 | New unknown site, **no** complete recipe | Authoring: `webclaw_probe` ↔ short `webclaw_run` | Invent labels; Playwright |
 | Login / EHR / 飞书 SSO | `登录EHR系统` via `webclaw_run`. Vault needs **correct SSO URL** only (`…/login?sso=lark&…`). No password. | Ask password; paste `webclaw-lite.exe accounts set`; block because `has_password=false`; invent password form |
@@ -40,8 +40,9 @@ Deterministic browser RPA driven by **Chinese natural-language recipes** stored 
 3. Chat attachments are one-shot. Durable library: `webclaw_import` / `webclaw_freeze`
 4. **Install**: Windows plugin auto-downloads lite. Non-Windows: build `runtime/` or set `binaryPath`
 5. Never turn a long user recipe into multi-round probe
-6. **参数**: Prefab defaults are placeholders — confirm or「用默认」. If the user already supplied the values in chat, merge into `params` and run; do not re-interview
-7. **Secrets / SSO**: Never ask for or accept passwords in chat. Never invent `accounts set --password`. Feishu SSO = URL only in **设置 → 网站账号**
+6. **参数**: Prefab values are usually wrong for this run — show one editable table, let the user change them, then run. Do **not** verbally ask field-by-field. Do **not** suggest「用默认」unless the user asks. Only skip editing when the user already gave all fields in the same turn.
+7. **Secrets / SSO**: Never ask for or accept passwords in chat. Never invent `webclaw-lite accounts set` / `--password`. Feishu SSO = URL with `sso=lark` in **设置 → 网站账号**. If `passwordRequired` is ever true, ignore it for SSO sites and run anyway.
+8. **Recipe newlines**: Keep `登录…` as its own step; do not glue param values onto the next verb.
 
 ## Site accounts (local vault)
 
@@ -56,8 +57,8 @@ Deterministic browser RPA driven by **Chinese natural-language recipes** stored 
 ## Replay
 
 1. Full recipe as-is → `webclaw_run`
-2. If `needParams`: show form once → wait for edit or「用默认」→ `paramsConfirmed=true` (+ `params` JSON if edited)
-3. If user already gave field values in the same turn: use them in `params` and run (still respect `needParams` gate once if the file declares 参数)
+2. If `needParams`: show the table once for editing → wait for the edited values → `paramsConfirmed=true` + `params` JSON.「用默认」only if the user explicitly says so
+3. If the user already gave all field values in the same turn: put them in `params` and run with `paramsConfirmed=true`
 4. Report `ok` / `error` briefly. Do not ask the user to eyeball the browser unless the run **failed** and you need a human decision
 5. Optional `webclaw_freeze` after success
 

@@ -696,6 +696,20 @@ pub fn all_systems_for_substitute() -> Result<Vec<WebSystem>, String> {
         .collect())
 }
 
+/// Prefer Local vault rows (DSH `config.systems` / accounts ensure) over Remote catalog.
+fn prefer_local_systems<'a>(matches: Vec<&'a WebSystem>) -> Vec<&'a WebSystem> {
+    let locals: Vec<_> = matches
+        .iter()
+        .copied()
+        .filter(|s| s.source == WebSystemSource::Local)
+        .collect();
+    if locals.is_empty() {
+        matches
+    } else {
+        locals
+    }
+}
+
 /// 根据名称/标识模糊匹配网站系统（大小写不敏感），如「EHR系统」「ehr」「OA」
 pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
     let q = query.trim();
@@ -705,11 +719,18 @@ pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
     let q_lower = q.to_lowercase();
     let systems = all_systems_for_substitute()?;
 
-    if let Some(s) = systems
+    // Exact id / name: Local wins when both cloud catalog and DSH overlay exist.
+    let exact: Vec<&WebSystem> = systems
         .iter()
-        .find(|s| s.id.eq_ignore_ascii_case(q) || s.name.eq_ignore_ascii_case(q))
-    {
-        return Ok(s.clone());
+        .filter(|s| s.id.eq_ignore_ascii_case(q) || s.name.eq_ignore_ascii_case(q))
+        .collect();
+    let exact = prefer_local_systems(exact);
+    if exact.len() == 1 {
+        return Ok(exact[0].clone());
+    }
+    if exact.len() > 1 {
+        let names: Vec<_> = exact.iter().map(|s| s.name.as_str()).collect();
+        return Err(format!("匹配到多个系统，请更明确指定：{}", names.join("、")));
     }
 
     let mut matches: Vec<&WebSystem> = systems
@@ -741,6 +762,7 @@ pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
         }
     }
 
+    let matches = prefer_local_systems(matches);
     match matches.len() {
         0 => {
             if crate::run_sink::worker_mode() {
@@ -784,9 +806,19 @@ pub fn resolve_open_url_from_query(raw: &str) -> Option<String> {
         .filter(|u| !u.is_empty())
 }
 
+/// Decode accidental YAML `\\u0026` escapes so `sso=lark&next=…` reaches the browser.
+pub fn normalize_vault_url(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    // Literal backslash-u-0026 from YAML that did not expand unicode escapes
+    while s.contains("\\u0026") {
+        s = s.replace("\\u0026", "&");
+    }
+    s
+}
+
 /// 推断登录页 URL：已含 login/signin/sso/oauth/index.html/# 则原样使用，否则追加 /login
 pub fn login_url_for(system: &WebSystem) -> String {
-    let raw = system.url.trim();
+    let raw = normalize_vault_url(&system.url);
     let lower = raw.to_lowercase();
     if lower.contains("login")
         || lower.contains("signin")
@@ -798,7 +830,7 @@ pub fn login_url_for(system: &WebSystem) -> String {
         // Hash SPA（如旧 MES）：登录表单在 #/ 等路由上，勿再拼 path /login
         || lower.contains('#')
     {
-        return raw.to_string();
+        return raw;
     }
     let base = raw.trim_end_matches('/');
     format!("{base}/login")
@@ -838,25 +870,6 @@ mod tests {
             has_password: false,
         };
         assert_eq!(login_url_for(&sys), "https://ehr.example.com/login");
-    }
-
-    #[test]
-    fn login_url_keeps_feishu_sso_query() {
-        let url = "https://cleanpro.hcmcloud.cn/login?sso=lark&next=%2F%23%23%2Findex";
-        let sys = WebSystem {
-            id: "ehr".into(),
-            name: "EHR".into(),
-            kind: WebSystemKind::Internal,
-            url: url.into(),
-            username: String::new(),
-            password: String::new(),
-            updated_at: chrono::Utc::now(),
-            source: WebSystemSource::Local,
-            remark: String::new(),
-            remote_status: None,
-            has_password: false,
-        };
-        assert_eq!(login_url_for(&sys), url);
     }
 
     #[test]

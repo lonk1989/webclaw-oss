@@ -475,24 +475,49 @@ fn accounts_cli(args: &[String]) -> Result<(), String> {
             let mut url = None;
             let mut i = 3;
             while i < args.len() {
-                match args[i].as_str() {
-                    "--id" => {
-                        i += 1;
-                        id = args.get(i).cloned();
+                let arg = args[i].as_str();
+                if let Some(rest) = arg.strip_prefix("--url=") {
+                    // Prefer --url=… so query `&` cannot be split by shells.
+                    url = Some(rest.to_string());
+                } else if let Some(rest) = arg.strip_prefix("--url-file=") {
+                    url = Some(
+                        std::fs::read_to_string(rest)
+                            .map_err(|e| format!("读 --url-file 失败: {e}"))?
+                            .trim()
+                            .to_string(),
+                    );
+                } else {
+                    match arg {
+                        "--id" => {
+                            i += 1;
+                            id = args.get(i).cloned();
+                        }
+                        "--name" => {
+                            i += 1;
+                            name = args.get(i).cloned();
+                        }
+                        "--url" => {
+                            i += 1;
+                            url = args.get(i).cloned();
+                        }
+                        "--url-file" => {
+                            i += 1;
+                            let path = args
+                                .get(i)
+                                .ok_or("accounts ensure --url-file 需要路径")?;
+                            url = Some(
+                                std::fs::read_to_string(path)
+                                    .map_err(|e| format!("读 --url-file 失败: {e}"))?
+                                    .trim()
+                                    .to_string(),
+                            );
+                        }
+                        other => return Err(format!("未知参数: {other}")),
                     }
-                    "--name" => {
-                        i += 1;
-                        name = args.get(i).cloned();
-                    }
-                    "--url" => {
-                        i += 1;
-                        url = args.get(i).cloned();
-                    }
-                    other => return Err(format!("未知参数: {other}")),
                 }
                 i += 1;
             }
-            let url = url.ok_or("accounts ensure 需要 --url")?;
+            let url = url.ok_or("accounts ensure 需要 --url 或 --url-file")?;
             let saved = crate::web_systems::ensure_worker_system_entry(
                 id.as_deref(),
                 name.as_deref(),

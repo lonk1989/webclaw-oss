@@ -40,9 +40,13 @@ import {
 } from './accounts-ui-server.js'
 import {
   CREDENTIALS_SETUP_HINT,
+  ensureAccount,
   isSsoAccountUrl,
   listAccounts,
   missingCredentialsForRecipe,
+  normalizeSystemUrl,
+  patchSystemsFile,
+  setAccount,
 } from './accounts-vault.js'
 import { registerBundledSkill } from './skill.js'
 
@@ -87,9 +91,9 @@ export interface Config {
    */
   requireParamConfirm: boolean
   /**
-   * Private deploy overlay: seed local vault entries (id + name + login URL only).
-   * No passwords. Applied via `webclaw-lite accounts ensure` after lite is ready.
-   * Put real corp URLs in your DSH fork patch — not in the public OSS defaults.
+   * Private deploy overlay: seed local vault entries (id + name + login URL).
+   * Optional username/password for private test accounts — applied via
+   * `accounts set` (DPAPI) after lite is ready. Not for public OSS defaults.
    */
   systems: SystemEntryConfig[]
   /**
@@ -101,11 +105,15 @@ export interface Config {
   accountsUiPort: number
 }
 
-/** One site entry for `config.systems` (URL only; credentials stay local). */
+/** One site entry for `config.systems` (private fork may include test credentials). */
 export interface SystemEntryConfig {
   id: string
   name?: string
   url: string
+  /** Optional — private deploy test account only. */
+  username?: string
+  /** Optional — private deploy test account only; never logged / never to LLM. */
+  password?: string
 }
 
 /** Validate plugin config from cordis.yml. */
@@ -126,6 +134,8 @@ export const Config: z<Partial<Config>, Config> = z.object({
         id: z.string(),
         name: z.string().default(''),
         url: z.string(),
+        username: z.string().default(''),
+        password: z.string().default(''),
       }),
     )
     .default([]),
@@ -134,7 +144,7 @@ export const Config: z<Partial<Config>, Config> = z.object({
 })
 
 /**
- * Prefill local vault site entries from deploy config (id/name/url only).
+ * Prefill local vault site entries from deploy config (url + optional credentials).
  */
 async function ensureConfiguredSystems(
   config: Config,
@@ -142,33 +152,76 @@ async function ensureConfiguredSystems(
   log: { info: (msg: string, ...args: unknown[]) => void; warn: (msg: string, ...args: unknown[]) => void },
 ): Promise<void> {
   const entries = config.systems ?? []
-  if (entries.length === 0) return
+  if (entries.length === 0) {
+    log.warn('webclaw: config.systems empty — vault overlay not applied')
+    return
+  }
   const env = liteEnvFrom(config, ensured, 60_000)
-  for (const entry of entries) {
-    const id = entry.id?.trim()
-    const url = entry.url?.trim()
-    if (!id || !url) {
-      log.warn('webclaw: systems entry skipped (need id + url)')
-      continue
-    }
-    const argv = ['accounts', 'ensure', '--id', id, '--url', url]
-    const name = entry.name?.trim()
-    if (name) argv.push('--name', name)
+  const home = env.webclawHome?.trim() || ensured.webclawHome
+  const normalized = entries
+    .map(e => ({
+      id: e.id?.trim() ?? '',
+      name: e.name?.trim(),
+      url: normalizeSystemUrl(e.url ?? ''),
+      username: e.username?.trim() || '',
+      password: e.password ?? '',
+    }))
+    .filter(e => e.id && e.url)
+
+  // 1) Direct file write — reliable for `&` in URLs (no CLI/YAML truncation).
+  try {
+    const patched = patchSystemsFile(
+      home,
+      normalized.map(e => ({
+        id: e.id,
+        url: e.url,
+        name: e.name,
+        username: e.username || undefined,
+      })),
+    )
+    log.info(
+      'webclaw: systems file patched %s → %s',
+      patched.path,
+      patched.updated.join('; ') || '(none)',
+    )
+  } catch (error) {
+    log.warn(
+      'webclaw: systems file patch failed: %s',
+      error instanceof Error ? error.message : error,
+    )
+  }
+
+  // 2) URL ensure + optional credential set (encrypted by lite).
+  for (const entry of normalized) {
     try {
-      const result = await runLite(env, argv)
-      if (result.code !== 0) {
-        log.warn(
-          'webclaw: accounts ensure failed id=%s: %s',
-          id,
-          (result.stderr || result.stdout).slice(0, 300),
-        )
+      const result = await ensureAccount(env, {
+        id: entry.id,
+        url: entry.url,
+        name: entry.name,
+      })
+      if (!result.ok) {
+        log.warn('webclaw: accounts ensure failed id=%s: %s', entry.id, result.error)
         continue
       }
-      log.info('webclaw: accounts ensure ok id=%s url=%s', id, url)
+      log.info('webclaw: accounts ensure ok id=%s url=%s', entry.id, entry.url)
+      if (entry.username && entry.password) {
+        const set = await setAccount(env, {
+          id: entry.id,
+          user: entry.username,
+          password: entry.password,
+          url: entry.url,
+          name: entry.name,
+        })
+        if (!set.ok) {
+          log.warn('webclaw: accounts set failed id=%s: %s', entry.id, set.error)
+        } else {
+          log.info('webclaw: accounts set ok id=%s user=%s', entry.id, entry.username)
+        }
+      }
     } catch (error) {
       log.warn(
         'webclaw: accounts ensure error id=%s: %s',
-        id,
+        entry.id,
         error instanceof Error ? error.message : error,
       )
     }
@@ -176,15 +229,21 @@ async function ensureConfiguredSystems(
 }
 
 function formatParamForm(params: readonly RecipeParamKv[]): string {
-  const rows = params.map(p => `- ${p.name}：${p.value || '（空）'}`)
+  const rows = params.map(p => {
+    // Strip accidental verb glue from older clients (家中有事登录EHR系统).
+    let value = p.value || '（空）'
+    value = value.replace(/登录[\u4e00-\u9fffA-Za-z0-9_-]*$/u, '').trim() || value
+    return `- ${p.name}：${value}`
+  })
   return [
-    '【请先确认参数 — 菜谱里的是占位/默认值，不要直接拿来跑】',
+    '【请编辑参数后再跑 — 表内多为占位值，默认不当真】',
     '',
-    '请把下表展示给用户，请他们修改或回复「用默认」：',
+    '把下表一次性展示给用户，请他们直接改字段（或整表贴回）。',
+    '不要逐项口头追问；不要主动劝「用默认」。',
     ...rows,
     '',
-    '用户回复后再次 webclaw_run：paramsConfirmed=true；若改了值再传 params JSON（如 {"公司":"山西阳泉","月份":"2026-07"}）。',
-    '用户说「用默认」：paramsConfirmed=true，params 可省略。',
+    '用户改完后再次 webclaw_run：paramsConfirmed=true，并传 params 对象（不要传 JSON 字符串），如 {"公司":"山西阳泉","月份":"2026-07"}。',
+    '仅当用户明确说「用默认 / 不用改」时：paramsConfirmed=true，params 可省略。',
     '确认前禁止 paramsConfirmed=true，禁止静默用占位值开跑。',
   ].join('\n')
 }
@@ -370,7 +429,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_run',
           description:
-            'Execute a Chinese natural-language browser recipe via webclaw-lite in ONE call. Full recipe/.webclaw → pass ENTIRE body (never probe step-by-step). Prefab 参数名=值 are PLACEHOLDERS: first call returns needParams — show form, wait for edit or「用默认」, then call again with paramsConfirmed=true (optional params JSON). Missing site password does NOT block: still run to open the page; only guide Settings if login fill fails. No CSS/Playwright.',
+            'Execute a Chinese natural-language browser recipe via webclaw-lite in ONE call. Full recipe/.webclaw → pass ENTIRE body (never probe step-by-step). Prefab 参数名=值 are PLACEHOLDERS users usually must edit: first call returns needParams — show the table once for editing (no verbal Q&A per field; do not push「用默认」), then paramsConfirmed=true + params JSON.「用默认」only if user explicitly says so. Missing site password does NOT block. No CSS/Playwright.',
           parameters: {
             recipe: {
               type: 'string',
@@ -386,15 +445,15 @@ export function apply(ctx: Context, config: Config): void {
               type: 'string',
               description: 'Optional run title',
             },
+            // Loose schema: models pass object or JSON string; Host parses both.
             params: {
-              type: 'string',
               description:
-                'Optional JSON object of param overrides after user edits the form, e.g. {"公司":"山西阳泉","月份":"2026-07"}. Merged into 参数… lines before run.',
-            },
+                'Param overrides. Prefer object {"休假项目":"年假",...}; JSON string also ok.',
+            } as any,
             paramsConfirmed: {
               type: 'boolean',
               description:
-                'Set true only after the user has seen/edited the 参数 form (or explicitly said to use defaults). Required to actually run when the recipe declares 参数…',
+                'Set true only after the user edited the 参数 table (or explicitly said「用默认」). Required to run when the recipe declares 参数… — most prefab values need editing.',
             },
           },
           output: {
@@ -442,7 +501,10 @@ export function apply(ctx: Context, config: Config): void {
               : readFileSync(sourcePath!, { encoding: 'utf8' })
 
             const declared = extractRecipeParams(rawContent)
-            const overrides = parseParamsArg(args.params)
+            // Tool schema may deliver object or string; parseParamsArg accepts both.
+            const overrides = parseParamsArg(
+              (args as { params?: unknown }).params,
+            )
             const confirmed = args.paramsConfirmed === true
 
             if (
@@ -457,7 +519,7 @@ export function apply(ctx: Context, config: Config): void {
                 params: paramsJson(preview.params),
                 form: formatParamForm(preview.params),
                 error:
-                  'needParams: show the form to the user; do not start the browser yet',
+                  'needParams: show the editable param table once; wait for user edits (not verbal interview); do not start the browser yet',
                 recipePath: sourcePath ?? '',
               }
             }
@@ -466,6 +528,11 @@ export function apply(ctx: Context, config: Config): void {
 
             // Soft status only — never block open for missing password (SSO / session OK).
             const lite = await env()
+            // Re-apply deploy systems (URL + optional test credentials).
+            if ((config.systems?.length ?? 0) > 0) {
+              const ensured = await ready()
+              await ensureConfiguredSystems(config, ensured, log)
+            }
             const listed = await listAccounts(lite)
             const missingCreds = missingCredentialsForRecipe(
               merged.content,
@@ -544,26 +611,42 @@ export function apply(ctx: Context, config: Config): void {
           },
           async execute(): Promise<Record<string, any>> {
             const ensured = await ready()
+            if ((config.systems?.length ?? 0) > 0) {
+              await ensureConfiguredSystems(config, ensured, log)
+            }
             const listed = await listAccounts(liteEnvFrom(config, ensured))
             const needsUrl = listed.items.filter(it => !it.url.trim())
+            const needsSsoUrl = listed.items.filter(
+              it =>
+                !!it.url.trim() &&
+                !isSsoAccountUrl(it.url) &&
+                /hcmcloud|\behr\b/i.test(`${it.id} ${it.name} ${it.url}`),
+            )
             return {
               ok: listed.ok,
               type: 'accounts',
               items: listed.items.map(it => ({
-                ...it,
+                id: it.id,
+                name: it.name,
+                url: it.url,
+                username: it.username,
+                has_password: it.has_password,
                 sso: isSsoAccountUrl(it.url),
-                passwordRequired: it.url.trim()
-                  ? !isSsoAccountUrl(it.url) && !it.has_password
-                  : false,
+                // Never signal passwordRequired — models invent `accounts set` otherwise.
+                passwordRequired: false,
               })),
-              /** Soft advisory: missing URL only. Missing password is fine for SSO. */
               incompleteCredentials: needsUrl.length > 0,
               incomplete: needsUrl.map(it => ({
                 id: it.id,
                 name: it.name,
                 reason: 'missing_url',
               })),
-              setupHint: needsUrl.length > 0 ? CREDENTIALS_SETUP_HINT : '',
+              setupHint:
+                needsUrl.length > 0
+                  ? CREDENTIALS_SETUP_HINT
+                  : needsSsoUrl.length > 0
+                    ? 'EHR URL missing sso=lark — user should fix 设置 → 网站账号 URL only. Never ask for passwords or invent accounts set CLI.'
+                    : 'OK to webclaw_run. Never ask for passwords or invent accounts set CLI.',
               error: listed.error || '',
               binaryPath: ensured.binaryPath,
             }
@@ -579,7 +662,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_inspect_params',
           description:
-            'Extract editable 参数名=值 fields from a recipe (desktop 参数栏 equivalents). Call before run when you need to show the user a param form; then webclaw_run with params + paramsConfirmed=true.',
+            'Extract editable 参数名=值 fields from a recipe. Prefer letting webclaw_run return needParams. Show table once for user to edit; then webclaw_run with paramsConfirmed=true + params JSON. Do not interview field-by-field.',
           parameters: {
             recipe: {
               type: 'string',
@@ -634,7 +717,7 @@ export function apply(ctx: Context, config: Config): void {
                   : '（该菜谱没有「参数」声明，可直接 webclaw_run）',
               hint:
                 params.length > 0
-                  ? 'Show form to user, then webclaw_run(..., paramsConfirmed=true)'
+                  ? 'Show editable table once; after user edits → webclaw_run(..., paramsConfirmed=true, params={...})'
                   : 'No static params; run directly',
             }
           },

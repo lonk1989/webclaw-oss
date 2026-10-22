@@ -3,6 +3,8 @@
  * accept passwords — Host UI / loopback server only).
  */
 
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { runLite, type LiteEnv } from './spawn.js'
 
 export interface AccountStatus {
@@ -15,7 +17,7 @@ export interface AccountStatus {
 
 /** True when vault URL is SSO / OAuth — password is not required. */
 export function isSsoAccountUrl(url: string): boolean {
-  const u = (url || '').trim().toLowerCase()
+  const u = normalizeSystemUrl(url).toLowerCase()
   if (!u) return false
   return (
     /[?&]sso=/.test(u) ||
@@ -40,6 +42,18 @@ export const CREDENTIALS_SETUP_HINT =
   '也可打开 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。禁止 probe / 禁止在对话里要密码。'
 
 /**
+ * Fix YAML / double-encoding: `\\u0026` → `&` so SSO query strings stay intact.
+ */
+export function normalizeSystemUrl(raw: string): string {
+  let s = (raw || '').trim()
+  // YAML/ Cordis may leave `\u0026` or `\\u0026` instead of `&`
+  while (/\\+u0026/.test(s)) {
+    s = s.replace(/\\+u0026/g, '&')
+  }
+  return s
+}
+
+/**
  * Extract「登录…」targets from a recipe body (Chinese/ASCII commas).
  */
 export function extractLoginQueries(content: string): string[] {
@@ -57,36 +71,31 @@ export function extractLoginQueries(content: string): string[] {
   return out
 }
 
-function accountMatchesQuery(item: AccountStatus, query: string): boolean {
-  const q = query.trim().toLowerCase().replace(/系统$/u, '')
-  const id = item.id.toLowerCase()
-  const name = item.name.toLowerCase().replace(/系统$/u, '')
-  if (id === query.trim().toLowerCase() || name === q) return true
-  if (q.includes('ehr') && id === 'ehr') return true
-  if (q.includes('mes') && (id === 'old-mes' || id === 'mes')) return true
-  if (q === 'oa' && id === 'oa') return true
-  if (name.includes(q) || q.includes(name)) return true
-  return false
-}
-
 /**
- * Login steps that lack username or password — SSO URLs with a vault entry are OK.
+ * Soft status: missing vault URL for a login target.
+ * SSO URLs without password are OK.
  */
 export function missingCredentialsForRecipe(
   content: string,
   items: readonly AccountStatus[],
 ): Array<{ query: string; id: string; name: string; url: string; reason: string }> {
-  const missing: Array<{
+  const queries = extractLoginQueries(content)
+  const out: Array<{
     query: string
     id: string
     name: string
     url: string
     reason: string
   }> = []
-  for (const query of extractLoginQueries(content)) {
-    const hit = items.find(it => accountMatchesQuery(it, query))
+  for (const query of queries) {
+    const hit = items.find(
+      it =>
+        it.id.toLowerCase() === query.toLowerCase() ||
+        it.name === query ||
+        it.name.replace(/系统$/u, '') === query.replace(/系统$/u, ''),
+    )
     if (!hit) {
-      missing.push({
+      out.push({
         query,
         id: '',
         name: query,
@@ -97,56 +106,59 @@ export function missingCredentialsForRecipe(
     }
     if (isSsoAccountUrl(hit.url)) continue
     if (!hit.url.trim()) {
-      missing.push({
+      out.push({
         query,
         id: hit.id,
         name: hit.name,
         url: hit.url,
         reason: 'missing_url',
       })
-      continue
     }
     // URL-only entries are fine to open; password only needed for form login.
-    // Do not treat missing password as blocking.
   }
-  return missing
+  return out
 }
 
-function parseJsonObject(text: string): Record<string, unknown> | undefined {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start < 0 || end <= start) return undefined
-  try {
-    return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
-  } catch {
-    return undefined
+function parseJsonObject(stdout: string): Record<string, unknown> | undefined {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!
+    try {
+      const row = JSON.parse(line) as Record<string, unknown>
+      if (row && typeof row === 'object') return row
+    } catch {
+      continue
+    }
   }
+  return undefined
 }
 
-function mapItem(it: Record<string, unknown>): AccountStatus {
+function mapItem(row: Record<string, unknown>): AccountStatus {
+  const it = (row.item as Record<string, unknown> | undefined) ?? row
   return {
     id: String(it.id ?? ''),
     name: String(it.name ?? ''),
-    url: String(it.url ?? ''),
+    url: normalizeSystemUrl(String(it.url ?? '')),
     username: String(it.username ?? ''),
-    has_password: Boolean(it.has_password ?? it.hasPassword ?? false),
+    has_password: Boolean(it.has_password ?? it.hasPassword),
   }
 }
 
 /** List vault entries (no password values). */
-export async function listAccounts(env: LiteEnv): Promise<{
-  ok: boolean
-  items: AccountStatus[]
-  error?: string
-}> {
+export async function listAccounts(
+  env: LiteEnv,
+): Promise<{ ok: boolean; items: AccountStatus[]; error?: string }> {
   const result = await runLite(env, ['accounts', 'list'])
-  const text = `${result.stdout}\n${result.stderr}`.trim()
-  const parsed = parseJsonObject(result.stdout) ?? parseJsonObject(text)
-  if (parsed && parsed.type === 'accounts' && Array.isArray(parsed.items)) {
-    return {
-      ok: result.code === 0,
-      items: (parsed.items as Record<string, unknown>[]).map(mapItem),
-    }
+  const parsed = parseJsonObject(result.stdout)
+  if (result.code === 0 && parsed) {
+    const itemsRaw = parsed.items
+    const items = Array.isArray(itemsRaw)
+      ? itemsRaw.map(x => mapItem(x as Record<string, unknown>))
+      : []
+    return { ok: true, items }
   }
   return {
     ok: false,
@@ -155,21 +167,126 @@ export async function listAccounts(env: LiteEnv): Promise<{
   }
 }
 
+interface DiskSystem {
+  id: string
+  name: string
+  kind?: string
+  url: string
+  username?: string
+  password?: string
+  updated_at?: string
+  source?: string
+  remark?: string
+  remote_status?: number | null
+}
+
+/**
+ * Write deploy `systems` URLs (and optional username) into WEBCLAW_HOME/web-systems.json.
+ * Avoids CLI/`&` truncation and keeps Local source so login prefers overlay URLs.
+ * Passwords are NOT written here — use `setAccount` so lite encrypts via DPAPI.
+ */
+export function patchSystemsFile(
+  webclawHome: string,
+  entries: readonly {
+    id: string
+    url: string
+    name?: string
+    username?: string
+  }[],
+): { ok: boolean; path: string; updated: string[] } {
+  const path = join(webclawHome, 'web-systems.json')
+  mkdirSync(webclawHome, { recursive: true })
+  let systems: DiskSystem[] = []
+  try {
+    const raw = readFileSync(path, 'utf8')
+    const db = JSON.parse(raw) as { systems?: DiskSystem[] }
+    systems = Array.isArray(db.systems) ? db.systems : []
+  } catch {
+    systems = []
+  }
+  const updated: string[] = []
+  const now = new Date().toISOString()
+  for (const entry of entries) {
+    const id = entry.id.trim().toLowerCase()
+    const url = normalizeSystemUrl(entry.url)
+    const name = entry.name?.trim() || id
+    const username = entry.username?.trim()
+    if (!id || !url) continue
+    const existing = systems.find(s => s.id.toLowerCase() === id)
+    if (existing) {
+      existing.url = url
+      existing.name = name
+      existing.source = 'local'
+      existing.updated_at = now
+      if (username) existing.username = username
+      // keep encrypted password unless setAccount updates it
+    } else {
+      systems.push({
+        id,
+        name,
+        kind: 'internal',
+        url,
+        username: username || '',
+        password: '',
+        updated_at: now,
+        source: 'local',
+        remark: '',
+        remote_status: null,
+      })
+    }
+    updated.push(`${id}=${url}`)
+  }
+  writeFileSync(path, `${JSON.stringify({ systems }, null, 2)}\n`, 'utf8')
+  return { ok: true, path, updated }
+}
+
 /** Upsert URL/name without touching password. */
 export async function ensureAccount(
   env: LiteEnv,
   input: { id: string; url: string; name?: string },
 ): Promise<{ ok: boolean; item?: AccountStatus; error?: string }> {
-  const argv = ['accounts', 'ensure', '--id', input.id, '--url', input.url]
-  if (input.name?.trim()) argv.push('--name', input.name.trim())
-  const result = await runLite(env, argv)
-  const parsed = parseJsonObject(result.stdout)
-  if (result.code === 0 && parsed) {
-    return { ok: true, item: mapItem(parsed) }
+  const url = normalizeSystemUrl(input.url)
+  const home = env.webclawHome?.trim()
+  // Direct file patch only — CLI `--url=` can lose `&` on some Windows hosts.
+  if (home) {
+    patchSystemsFile(home, [{ id: input.id, url, name: input.name }])
+    return {
+      ok: true,
+      item: {
+        id: input.id,
+        name: input.name ?? input.id,
+        url,
+        username: '',
+        has_password: false,
+      },
+    }
   }
-  return {
-    ok: false,
-    error: (result.stderr || result.stdout || 'accounts ensure failed').slice(0, 500),
+  const { writeFileSync, unlinkSync, mkdirSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+  const { randomUUID } = await import('node:crypto')
+  const dir = join(tmpdir(), 'webclaw-dsh')
+  mkdirSync(dir, { recursive: true })
+  const urlFile = join(dir, `ensure-url-${randomUUID()}.txt`)
+  writeFileSync(urlFile, url, 'utf8')
+  try {
+    const argv = ['accounts', 'ensure', '--id', input.id, `--url-file=${urlFile}`]
+    if (input.name?.trim()) argv.push('--name', input.name.trim())
+    const result = await runLite(env, argv)
+    const parsed = parseJsonObject(result.stdout)
+    if (result.code === 0 && parsed) {
+      return { ok: true, item: mapItem(parsed) }
+    }
+    return {
+      ok: false,
+      error: (result.stderr || result.stdout || 'accounts ensure failed').slice(0, 500),
+    }
+  } finally {
+    try {
+      unlinkSync(urlFile)
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -198,7 +315,7 @@ export async function setAccount(
     '--password',
     input.password,
   ]
-  if (input.url?.trim()) argv.push('--url', input.url.trim())
+  if (input.url?.trim()) argv.push(`--url=${normalizeSystemUrl(input.url)}`)
   if (input.name?.trim()) argv.push('--name', input.name.trim())
   const result = await runLite(env, argv)
   const parsed = parseJsonObject(result.stdout)
@@ -223,7 +340,7 @@ export async function saveAccountFromForm(
   },
 ): Promise<{ ok: boolean; item?: AccountStatus; error?: string }> {
   const id = input.id.trim()
-  const url = input.url.trim()
+  const url = normalizeSystemUrl(input.url)
   if (!id || !url) {
     return { ok: false, error: 'id and url are required' }
   }
@@ -243,7 +360,6 @@ export async function saveAccountFromForm(
     return { ok: true, item: ensured.item }
   }
   if (!password) {
-    // URL/name updated; keep existing password. If never set, has_password stays false.
     return { ok: true, item: ensured.item }
   }
   return setAccount(env, {
