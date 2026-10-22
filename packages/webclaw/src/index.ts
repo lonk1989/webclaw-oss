@@ -33,6 +33,11 @@ import {
   type RecipeParamKv,
 } from './params.js'
 import { redactSecrets } from './redact.js'
+import {
+  ACCOUNTS_UI_DEFAULT_PORT,
+  startAccountsUiServer,
+  type AccountsUiHandle,
+} from './accounts-ui-server.js'
 import { registerBundledSkill } from './skill.js'
 
 /** Cordis plugin id. */
@@ -81,6 +86,13 @@ export interface Config {
    * Put real corp URLs in your DSH fork patch — not in the public OSS defaults.
    */
   systems: SystemEntryConfig[]
+  /**
+   * Start loopback accounts UI (127.0.0.1) for Settings form / browser page.
+   * Default true. Passwords never enter the LLM.
+   */
+  accountsUi: boolean
+  /** Preferred loopback port for accounts UI (default 19229). */
+  accountsUiPort: number
 }
 
 /** One site entry for `config.systems` (URL only; credentials stay local). */
@@ -111,6 +123,8 @@ export const Config: z<Partial<Config>, Config> = z.object({
       }),
     )
     .default([]),
+  accountsUi: z.boolean().default(true),
+  accountsUiPort: z.number().min(1).max(65_535).default(ACCOUNTS_UI_DEFAULT_PORT),
 })
 
 /**
@@ -222,9 +236,18 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   let lastEnsure: EnsureLiteResult | undefined
+  let accountsUi: AccountsUiHandle | null = null
 
   const ready = async (): Promise<EnsureLiteResult> => {
     lastEnsure = await ensureLite(config, log)
+    try {
+      await startUi(lastEnsure)
+    } catch (error) {
+      log.warn(
+        'webclaw: accounts UI start failed: %s',
+        error instanceof Error ? error.message : error,
+      )
+    }
     return lastEnsure
   }
 
@@ -233,7 +256,27 @@ export function apply(ctx: Context, config: Config): void {
     return liteEnvFrom(config, ensured, timeoutMs)
   }
 
-  if (config.ensureOnBoot || (config.systems?.length ?? 0) > 0) {
+  const startUi = async (ensured: EnsureLiteResult): Promise<void> => {
+    if (accountsUi || !config.accountsUi) return
+    // Use the already-resolved lite env — do not call ready()/env() (re-entrancy).
+    accountsUi = await startAccountsUiServer({
+      enabled: config.accountsUi,
+      preferredPort: config.accountsUiPort || ACCOUNTS_UI_DEFAULT_PORT,
+      getEnv: async () => liteEnvFrom(config, ensured, 60_000),
+      home: ensured.webclawHome,
+      binaryPath: ensured.binaryPath,
+      log,
+    })
+  }
+
+  ctx.effect(() => {
+    return () => {
+      accountsUi?.close()
+      accountsUi = null
+    }
+  }, 'webclaw: accounts UI lifetime')
+
+  if (config.ensureOnBoot || (config.systems?.length ?? 0) > 0 || config.accountsUi) {
     void ready()
       .then(async r => {
         ctx.logger.info(
@@ -242,6 +285,7 @@ export function apply(ctx: Context, config: Config): void {
           r.binaryPath,
         )
         await ensureConfiguredSystems(config, r, log)
+        await startUi(r)
       })
       .catch((error: unknown) => {
         ctx.logger.warn(
@@ -494,10 +538,9 @@ export function apply(ctx: Context, config: Config): void {
                 type: 'accounts',
                 items,
                 setupHint:
-                  '入口 URL 可由部署方 cordis config.systems 预制（accounts ensure，无密码）。\n' +
-                  '缺失密码时请用户在本机终端执行（不要把密码发给你）：\n' +
-                  'webclaw-lite accounts set --id ehr --url <登录页URL> --user <账号> --password <密码>\n' +
-                  '菜谱只写「登录EHR系统」，不要写「输入密码=…」或 {{ehr.密码}}。',
+                  '请用户打开 DSH「设置 → 网站账号」填写（密码只进本机 vault，不要让用户把密码发给你）。\n' +
+                  '也可双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。\n' +
+                  '入口 URL 可由部署方 config.systems 预制。菜谱只写「登录EHR系统」。',
                 binaryPath: ensured.binaryPath,
               }
             }

@@ -23,7 +23,7 @@ metadata:
 |------------|--------|-----------|
 | Complete recipe / `.webclaw` | `webclaw_run` with full body or path | Probe between steps; split the recipe |
 | Recipe has `参数…=` | Show returned form → wait → `paramsConfirmed=true` | Silent defaults; skip form |
-| Login / passwords | Deploy may `config.systems` for URLs; local `accounts set` for passwords; recipe `登录…` only | Paste password into chat |
+| Login / passwords | Deploy may `config.systems` for URLs; user fills passwords in DSH **设置 → 网站账号** (or `webclaw-accounts.cmd`); recipe `登录…` only | Paste password into chat |
 | New unknown site, no recipe | Authoring: probe ↔ short run | Invent labels; Playwright |
 
 ## Three stages

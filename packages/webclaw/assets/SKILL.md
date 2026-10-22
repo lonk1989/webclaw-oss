@@ -50,17 +50,13 @@ DSH chat goes to the model over the network. **Treat passwords as toxic in chat.
 | Do | Don't |
 |----|--------|
 | Recipe: `登录EHR系统` / `登录旧MES系统` | `输入密码=明文` or `{{ehr.密码}}` in Files/chat |
-| Deploy `config.systems` seeds URL only; user fills password locally | Paste password into the agent |
+| Deploy `config.systems` seeds URL only | Paste password into the agent |
+| User fills password in **设置 → 网站账号** (or `webclaw-accounts.cmd`) | Ask them to type the password in chat |
 | `webclaw_accounts_status` → check `has_password` | Invent a tool call that sends `--password` through the model |
 
-Login URLs may be prefilled by the deployer's cordis `config.systems` (no secrets). Passwords still require a **local terminal** (you only paste this template with placeholders):
+Login URLs may be prefilled by the deployer's cordis `config.systems`. Passwords: tell the user to open **Settings → 网站账号** in DSH (local form; never through chat), or double-click `%LOCALAPPDATA%\webclaw\bin\webclaw-accounts.cmd`.
 
-```powershell
-webclaw-lite accounts set --id ehr --url https://登录页 --user 账号 --password 密码
-webclaw-lite accounts list
-```
-
-If login fails with “还没有登录账号”, point at the command above — do **not** ask “请把密码发给我”.
+If login fails with “还没有登录账号”, point at that settings page — do **not** ask “请把密码发给我”.
 
 ## Replay (default path)
 

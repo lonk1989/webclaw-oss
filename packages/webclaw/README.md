@@ -91,18 +91,21 @@ config:
 
 This runs `webclaw-lite accounts ensure` and never writes passwords. Keep real URLs in your private patch, not in public OSS.
 
-### User credentials (once per machine)
+### User credentials (once per machine) — settings form
 
-Desktop used **设置 → 网站账号**. Under DSH the same vault is filled via the local CLI (Windows DPAPI at rest):
+Open **Settings → 网站账号** in DSH (local Host must be on this machine). The form talks to a **loopback-only** service (`127.0.0.1:19229` by default); passwords are written into the webclaw vault (DPAPI on Windows) and **never** enter chat or the model.
 
-```powershell
-# Path is usually the managed lite under %LOCALAPPDATA%\webclaw\bin\
-webclaw-lite accounts set --id ehr --url https://your-login --user alice --password '***'
-webclaw-lite accounts set --id old-mes --url https://mes-login --user alice --password '***'
-webclaw-lite accounts list   # shows username + hasPassword only
+Fallback (no PATH needed):
+
+```text
+%LOCALAPPDATA%\webclaw\bin\webclaw-accounts.cmd
 ```
 
-Recipes keep alias login only, e.g. `登录EHR系统` (see `examples/整理6月考勤.webclaw`). The agent may call `webclaw_accounts_status` to see what is configured; it must never ask you to paste a password into the conversation.
+That launcher is created on plugin boot. A `webclaw-lite.cmd` wrapper with an absolute path is written next to it so you need not add `webclaw-lite` to PATH.
+
+Config knobs: `accountsUi` (default true), `accountsUiPort` (default 19229).
+
+Recipes keep alias login only, e.g. `登录EHR系统`. The agent may call `webclaw_accounts_status` (no secrets); it must never ask you to paste a password into the conversation.
 
 ## License
 
