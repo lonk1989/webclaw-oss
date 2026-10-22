@@ -10,7 +10,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh = {
   sectionLabel: '网站账号',
   intro:
-    '账号密码只保存在本机 webclaw 保险箱（Windows 下 DPAPI 加密），不会进入对话或模型。密码框留空表示不修改已保存的密码。',
+    '登录地址与可选账号密码只保存在本机 webclaw 保险箱（Windows 下 DPAPI）。飞书 SSO 等只需填写正确的登录 URL（如 …/login?sso=lark&…），密码可留空。密码框留空表示不修改已保存的密码；勿把密码发到对话里。',
   loading: '正在连接本机配置服务…',
   loadFailed: '加载失败',
   url: '登录地址',
@@ -34,7 +34,7 @@ export const zh = {
 export const en = {
   sectionLabel: 'Site accounts',
   intro:
-    'Credentials stay in the local webclaw vault (DPAPI on Windows). They never enter chat or the model. Leave password blank to keep the stored secret.',
+    'Login URL and optional credentials stay in the local webclaw vault (DPAPI on Windows). Feishu SSO only needs the correct login URL (e.g. …/login?sso=lark&…); password may be blank. Leave password blank to keep the stored secret — never paste passwords into chat.',
   loading: 'Connecting to local accounts service…',
   loadFailed: 'Failed to load',
   url: 'Login URL',

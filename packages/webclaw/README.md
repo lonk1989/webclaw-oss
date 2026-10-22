@@ -83,13 +83,14 @@ config:
   systems:
     - id: ehr
       name: EHR系统
-      url: https://your-corp-ehr-login/
+      # Prefer the real SSO entry (Feishu/Lark). Password not required.
+      url: https://your-corp/login?sso=lark&next=%2F%23%23%2Findex
     - id: old-mes
       name: 旧MES系统
       url: https://your-corp-mes-login/
 ```
 
-This runs `webclaw-lite accounts ensure` and never writes passwords. Keep real URLs in your private patch, not in public OSS.
+This runs `webclaw-lite accounts ensure` and never writes passwords. Keep real URLs in your private patch, not in public OSS. For Feishu SSO, URL alone is enough — do not ask users for passwords.
 
 ### User credentials (once per machine) — settings form
 
@@ -105,7 +106,7 @@ That launcher is created on plugin boot. A `webclaw-lite.cmd` wrapper with an ab
 
 Config knobs: `accountsUi` (default true), `accountsUiPort` (default 19229).
 
-Recipes keep alias login only, e.g. `登录EHR系统`. Missing password does **not** block opening the site (SSO / existing Chrome session may work); the login step opens the URL first and only fails if the page still needs a form fill. The agent may call `webclaw_accounts_status` (no secrets); it must never ask you to paste a password into the conversation.
+Recipes keep alias login only, e.g. `登录EHR系统`. Use the **SSO login URL** in the vault when the corp site supports Feishu/Lark SSO. Missing password does **not** block opening the site; the login step opens the URL, handles authorize when needed, and only asks for vault passwords on a classic username/password form. The agent must never invent `accounts set --password` or ask you to paste a password into chat.
 
 ## License
 

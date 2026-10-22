@@ -784,13 +784,16 @@ pub fn resolve_open_url_from_query(raw: &str) -> Option<String> {
         .filter(|u| !u.is_empty())
 }
 
-/// 推断登录页 URL：已含 login/signin/index.html/# 则原样使用，否则追加 /login
+/// 推断登录页 URL：已含 login/signin/sso/oauth/index.html/# 则原样使用，否则追加 /login
 pub fn login_url_for(system: &WebSystem) -> String {
     let raw = system.url.trim();
     let lower = raw.to_lowercase();
     if lower.contains("login")
         || lower.contains("signin")
         || lower.contains("sign-in")
+        || lower.contains("sso=")
+        || lower.contains("/sso")
+        || lower.contains("oauth")
         || lower.ends_with("index.html")
         // Hash SPA（如旧 MES）：登录表单在 #/ 等路由上，勿再拼 path /login
         || lower.contains('#')
@@ -838,12 +841,13 @@ mod tests {
     }
 
     #[test]
-    fn login_url_keeps_oa_index() {
+    fn login_url_keeps_feishu_sso_query() {
+        let url = "https://cleanpro.hcmcloud.cn/login?sso=lark&next=%2F%23%23%2Findex";
         let sys = WebSystem {
-            id: "oa".into(),
-            name: "OA".into(),
+            id: "ehr".into(),
+            name: "EHR".into(),
             kind: WebSystemKind::Internal,
-            url: "https://example.com/".into(),
+            url: url.into(),
             username: String::new(),
             password: String::new(),
             updated_at: chrono::Utc::now(),
@@ -852,10 +856,25 @@ mod tests {
             remote_status: None,
             has_password: false,
         };
-        assert_eq!(
-            login_url_for(&sys),
-            "https://example.com/"
-        );
+        assert_eq!(login_url_for(&sys), url);
+    }
+
+    #[test]
+    fn login_url_keeps_oa_index() {
+        let sys = WebSystem {
+            id: "oa".into(),
+            name: "OA".into(),
+            kind: WebSystemKind::Internal,
+            url: "https://example.com/index.html".into(),
+            username: String::new(),
+            password: String::new(),
+            updated_at: chrono::Utc::now(),
+            source: WebSystemSource::Local,
+            remark: String::new(),
+            remote_status: None,
+            has_password: false,
+        };
+        assert_eq!(login_url_for(&sys), "https://example.com/index.html");
     }
 
     #[test]
@@ -864,7 +883,7 @@ mod tests {
             id: "old-mes".into(),
             name: "旧MES".into(),
             kind: WebSystemKind::Internal,
-            url: "https://example.com/".into(),
+            url: "https://example.com/#/".into(),
             username: String::new(),
             password: String::new(),
             updated_at: chrono::Utc::now(),
@@ -873,7 +892,7 @@ mod tests {
             remote_status: None,
             has_password: false,
         };
-        assert_eq!(login_url_for(&sys), "https://example.com/");
+        assert_eq!(login_url_for(&sys), "https://example.com/#/");
     }
 
     #[test]

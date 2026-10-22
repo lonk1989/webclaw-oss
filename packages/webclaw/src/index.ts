@@ -40,6 +40,7 @@ import {
 } from './accounts-ui-server.js'
 import {
   CREDENTIALS_SETUP_HINT,
+  isSsoAccountUrl,
   listAccounts,
   missingCredentialsForRecipe,
 } from './accounts-vault.js'
@@ -526,7 +527,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_accounts_status',
           description:
-            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). Missing password is OK to still webclaw_run (open page / SSO / existing session). Only after a login step fails for credentials, guide user to DSH「设置 → 网站账号」(or webclaw-accounts.cmd). Do NOT ask for passwords in chat.',
+            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). SSO URLs (sso=lark etc.) need NO password — just webclaw_run. Never ask for passwords or invent `accounts set` CLI. If URL wrong, tell user to fix it in 设置 → 网站账号 (URL only).',
           parameters: {},
           output: {
             schema: { type: 'object', additionalProperties: true },
@@ -544,23 +545,25 @@ export function apply(ctx: Context, config: Config): void {
           async execute(): Promise<Record<string, any>> {
             const ensured = await ready()
             const listed = await listAccounts(liteEnvFrom(config, ensured))
-            const incomplete = listed.items.filter(
-              it => !it.username.trim() || !it.has_password,
-            )
+            const needsUrl = listed.items.filter(it => !it.url.trim())
             return {
               ok: listed.ok,
               type: 'accounts',
-              items: listed.items,
-              /** Soft advisory only — does NOT mean block webclaw_run. */
-              incompleteCredentials: incomplete.length > 0,
-              incomplete: incomplete.map(it => ({
+              items: listed.items.map(it => ({
+                ...it,
+                sso: isSsoAccountUrl(it.url),
+                passwordRequired: it.url.trim()
+                  ? !isSsoAccountUrl(it.url) && !it.has_password
+                  : false,
+              })),
+              /** Soft advisory: missing URL only. Missing password is fine for SSO. */
+              incompleteCredentials: needsUrl.length > 0,
+              incomplete: needsUrl.map(it => ({
                 id: it.id,
                 name: it.name,
-                reason: !it.username.trim()
-                  ? 'missing_username'
-                  : 'missing_password',
+                reason: 'missing_url',
               })),
-              setupHint: incomplete.length > 0 ? CREDENTIALS_SETUP_HINT : '',
+              setupHint: needsUrl.length > 0 ? CREDENTIALS_SETUP_HINT : '',
               error: listed.error || '',
               binaryPath: ensured.binaryPath,
             }

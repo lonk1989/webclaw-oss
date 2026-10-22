@@ -13,15 +13,31 @@ export interface AccountStatus {
   has_password: boolean
 }
 
+/** True when vault URL is SSO / OAuth — password is not required. */
+export function isSsoAccountUrl(url: string): boolean {
+  const u = (url || '').trim().toLowerCase()
+  if (!u) return false
+  return (
+    /[?&]sso=/.test(u) ||
+    u.includes('/sso') ||
+    u.includes('oauth') ||
+    u.includes('openid') ||
+    u.includes('sso=lark') ||
+    u.includes('passport.feishu') ||
+    u.includes('accounts.feishu') ||
+    u.includes('accounts.larksuite')
+  )
+}
+
 /**
- * Soft hint when login fill fails for lack of vault credentials.
- * Do NOT use this to block opening the site — many sites work via SSO / existing session.
- * Never ask for passwords in chat.
+ * Soft hint when a password form login fails.
+ * Never paste `accounts set` CLI or ask for passwords in chat.
+ * SSO sites only need the correct login URL in 设置 → 网站账号.
  */
 export const CREDENTIALS_SETUP_HINT =
-  '站点不一定需要账号密码（可能已登录或 SSO）。应先 webclaw_run 打开页面。\n' +
-  '仅当登录步明确要求填表且本地无凭据时：请用户打开 DSH「设置 → 网站账号」填写（只进本机 vault，勿把密码发给你）；\n' +
-  '也可双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。禁止 probe / 禁止在对话里要密码。'
+  '多数站点（含飞书 SSO）只需正确的登录 URL，不要要密码、不要发 accounts set 命令。\n' +
+  '请用户在 DSH「设置 → 网站账号」把 EHR URL 设为 SSO 入口（例如 …/login?sso=lark&next=…），保存即可。\n' +
+  '也可打开 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。禁止 probe / 禁止在对话里要密码。'
 
 /**
  * Extract「登录…」targets from a recipe body (Chinese/ASCII commas).
@@ -54,7 +70,7 @@ function accountMatchesQuery(item: AccountStatus, query: string): boolean {
 }
 
 /**
- * Login steps that lack username or password in the local vault.
+ * Login steps that lack username or password — SSO URLs with a vault entry are OK.
  */
 export function missingCredentialsForRecipe(
   content: string,
@@ -79,15 +95,19 @@ export function missingCredentialsForRecipe(
       })
       continue
     }
-    if (!hit.username.trim() || !hit.has_password) {
+    if (isSsoAccountUrl(hit.url)) continue
+    if (!hit.url.trim()) {
       missing.push({
         query,
         id: hit.id,
         name: hit.name,
         url: hit.url,
-        reason: !hit.username.trim() ? 'missing_username' : 'missing_password',
+        reason: 'missing_url',
       })
+      continue
     }
+    // URL-only entries are fine to open; password only needed for form login.
+    // Do not treat missing password as blocking.
   }
   return missing
 }

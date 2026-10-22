@@ -17,7 +17,7 @@ export const zh = {
   wrap: '换行',
   unwrap: '不换行',
   paramsTitle: '可改参数（默认值）',
-  paramsHint: '菜谱里的参数是占位/默认值；执行前会先在对话里请你确认或改完再跑。',
+  paramsHint: '菜谱参数是占位/默认值；有 参数…= 时先确认或「用默认」。业务指令（如请假）用户已给齐字段则直接跑，勿反复追问。',
 }
 
 /** English dictionary with the same keys. */

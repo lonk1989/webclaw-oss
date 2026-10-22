@@ -20,10 +20,10 @@
         # ensureOnBoot: true   # default
         # binaryPath: 'C:/path/to/webclaw-lite.exe'  # skip auto-download
         # liteBaseUrl: 'https://cdn.example.com/webclaw/v0.1.8'  # tried before GitHub/mirrors
-        # systems:
+        # systems:  # private deploy only — use real SSO URL when available (no password)
         #   - id: ehr
         #     name: EHR系统
-        #     url: https://example.com/ehr-login
+        #     url: https://example.com/login?sso=lark&next=%2F%23%23%2Findex
         #   - id: old-mes
         #     name: 旧MES系统
         #     url: https://example.com/mes-login

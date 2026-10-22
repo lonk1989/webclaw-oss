@@ -54,7 +54,7 @@ Ask the agent to run a recipe such as:
 
 When you paste a **full** multi-step recipe, the agent should call **one** `webclaw_run` with the entire body (not probe step-by-step).
 
-**Passwords:** keep them in the local vault (DSH **设置 → 网站账号**), not in DSH chat. Missing password does not block opening the site. Recipes should say `登录EHR系统`, never `输入密码=…`. Prefab `参数…=` values are placeholders—confirm or「用默认」before run. Private DSH forks may seed login **URLs** via `config.systems` (see `packages/webclaw/README.md`); OSS does not ship corp URLs.
+**Accounts / SSO:** put the real login URL in DSH **设置 → 网站账号** (Feishu SSO e.g. `…/login?sso=lark&…` — password optional). Never put passwords in chat. Recipes say `登录EHR系统`, never `输入密码=…`. Prefab `参数…=` are placeholders—confirm or「用默认」; if the user already gave fields, just run. Private forks seed URLs via `config.systems` (see `packages/webclaw/README.md`).
 
 ### 2. Local dev (optional)
 

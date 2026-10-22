@@ -611,14 +611,14 @@ fn refresh_builtin_wait_script(commands: &mut Vec<CommandDef>) -> bool {
     changed
 }
 
-/// 将已保存的旧版「登录」内置脚本升级到 login-system-v7
+/// 将已保存的旧版「登录」内置脚本升级到 login-system-v8
 fn refresh_builtin_login_script(commands: &mut Vec<CommandDef>) -> bool {
     let mut changed = false;
     if let Some(cmd) = commands
         .iter_mut()
         .find(|c| c.id == "builtin_login" && c.builtin)
     {
-        if !cmd.script.contains("login-system-v7") {
+        if !cmd.script.contains("login-system-v8") {
             cmd.script = super::scripts::LOGIN_SYSTEM.to_string();
             changed = true;
         }

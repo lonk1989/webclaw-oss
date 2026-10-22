@@ -3639,8 +3639,8 @@ return { ok: true, delegate: 'rust_close_tab', message: '将由 CDP 关闭当前
 "#;
 
 pub const LOGIN_SYSTEM: &str = r#"
-// login-system-v7 — 先由 Rust 打开登录页；无账号密码时仍可走已登录会话；
-// 仅当页面需要填表登录时才要求 vault 凭据（站点不一定都要密码）。
+// login-system-v8 — SSO（sso=lark / 飞书授权）无密码可完成；
+// 先开页 → 已登录跳过 → SSO 点授权并等待回跳 → 仅密码表单才要 vault。
 const cred = ctx.credentials || {};
 const username = (cred.username || '').trim();
 const password = (cred.password || '').trim();
@@ -3649,6 +3649,31 @@ const loginUrlHint = (cred.loginUrl || '').trim().toLowerCase();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const normUiText = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
+const pageText = () => ((document.body && (document.body.innerText || document.body.textContent)) || '');
+
+const isSsoContext = () => {
+  const href = (location.href || '').toLowerCase();
+  const host = (location.hostname || '').toLowerCase();
+  if (/[?&]sso=|\/sso\b|oauth|openid|sso=lark|sso=feishu/.test(loginUrlHint)) return true;
+  if (/[?&]sso=|\/sso\b|oauth|openid/.test(href)) return true;
+  if (/passport\.feishu\.cn|accounts\.feishu\.cn|login\.feishu\.cn|accounts\.larksuite\.com|passport\.larksuite\.com/.test(href)) return true;
+  if (/feishu\.cn|larksuite\.com/.test(host) && /授权|同意授权|授权并登录/.test(pageText())) return true;
+  return false;
+};
+
+const pickConsentButton = () => {
+  const kws = ['授权并登录', '确认授权', '授权', '同意', '允许', 'authorize', 'allow', 'grant access', 'approve'];
+  const nodes = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+  for (const kw of kws) {
+    const n = normUiText(kw);
+    for (const el of nodes) {
+      if (!isVisible(el) || el.disabled) continue;
+      const t = loginText(el);
+      if (t.includes(n) || normUiText(el.value || '').includes(n)) return el;
+    }
+  }
+  return null;
+};
 
 const TYPABLE = new Set(['text','search','tel','email','password','url','number','']);
 const SKIP_TYPES = new Set(['hidden','checkbox','radio','submit','button','reset','file','image']);
@@ -3850,6 +3875,55 @@ if (already.skip) {
 
 // 已等待仍无登录表单：多为会话有效，系统直接进业务页
 if (!looksLikeLoginForm()) {
+  // SSO：可能停在飞书授权页（无密码框）——点授权并等待回跳
+  if (isSsoContext()) {
+    for (let i = 0; i < 80; i++) {
+      const late = detectAlreadyLoggedIn();
+      if (late.skip) {
+        return {
+          ok: true,
+          alreadyLoggedIn: true,
+          skipped: true,
+          clicked: false,
+          sso: true,
+          systemName,
+          username,
+          message: `SSO 已登录（${late.reason}）`,
+        };
+      }
+      const consent = pickConsentButton();
+      if (consent) {
+        try { consent.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }); } catch (_) {}
+        try { consent.click(); } catch (_) {}
+        await sleep(800);
+        continue;
+      }
+      await sleep(400);
+    }
+    const after = detectAlreadyLoggedIn();
+    if (after.skip || !isLoginLikeUrl(location.href || '')) {
+      return {
+        ok: true,
+        alreadyLoggedIn: true,
+        skipped: true,
+        clicked: false,
+        sso: true,
+        systemName,
+        username,
+        message: 'SSO 入口已打开并完成跳转',
+      };
+    }
+    return {
+      ok: true,
+      alreadyLoggedIn: false,
+      skipped: true,
+      clicked: false,
+      sso: true,
+      systemName,
+      username,
+      message: '已打开 SSO 登录入口（无需账号密码）；若仍停在授权页请在浏览器点一次授权',
+    };
+  }
   return {
     ok: true,
     alreadyLoggedIn: true,
@@ -3861,11 +3935,61 @@ if (!looksLikeLoginForm()) {
   };
 }
 
+// 密码表单：SSO 场景仍优先点授权，不要要密码
+if (isSsoContext() && (!username || !password)) {
+  for (let i = 0; i < 60; i++) {
+    const late = detectAlreadyLoggedIn();
+    if (late.skip) {
+      return {
+        ok: true,
+        alreadyLoggedIn: true,
+        skipped: true,
+        clicked: false,
+        sso: true,
+        systemName,
+        username,
+        message: `SSO 已登录（${late.reason}）`,
+      };
+    }
+    const consent = pickConsentButton();
+    if (consent) {
+      try { consent.click(); } catch (_) {}
+      await sleep(800);
+      continue;
+    }
+    // 飞书已登、业务站仍短暂露出账号框时再等回跳
+    if (!looksLikeLoginForm()) break;
+    await sleep(400);
+  }
+  if (!looksLikeLoginForm() || detectAlreadyLoggedIn().skip) {
+    return {
+      ok: true,
+      alreadyLoggedIn: true,
+      skipped: true,
+      clicked: false,
+      sso: true,
+      systemName,
+      username,
+      message: 'SSO 登录完成（无密码）',
+    };
+  }
+  return {
+    ok: true,
+    alreadyLoggedIn: false,
+    skipped: true,
+    clicked: false,
+    sso: true,
+    systemName,
+    username,
+    message: '已走 SSO（无需本地密码）；请确认浏览器已完成飞书授权',
+  };
+}
+
 // 需要填表时才校验凭据（页面已打开；勿在打开前因缺密码拦截整次 run）
 if (!username || !password) {
   return {
     ok: false,
-    error: '已打开登录页，但本地未配置账号或密码。请用户打开 DSH「设置 → 网站账号」或双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd 填写后再重试（勿把密码发给助手）',
+    error: '已打开登录页且需要账号密码。若该站支持飞书 SSO，请把网站账号 URL 改成带 sso=lark 的登录地址（设置 → 网站账号，只需改 URL，不要发密码到聊天）；否则在同一设置页填写账号密码后再试',
   };
 }
 
