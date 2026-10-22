@@ -1,49 +1,63 @@
 /**
- * Bundle the browser Client half to lib/client.js (ESM, peers external).
+ * Emit DSH Client factory bundle: window.__ModuleLoader__.load({ id, factory }).
+ * Plain ESM imports fail web boot ("import failed") — the shell only answers require().
  */
-import { writeFileSync } from 'node:fs'
 import { build } from 'esbuild'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+const id = pkg.name
+const outfile = join(root, 'lib', 'client.cjs.tmp.js')
 
 await build({
   absWorkingDir: root,
   entryPoints: [join(root, 'src/client/index.ts')],
-  outfile: join(root, 'lib/client.js'),
+  outfile,
   bundle: true,
-  format: 'esm',
+  format: 'cjs',
   platform: 'browser',
   target: ['es2022'],
   jsx: 'automatic',
-  sourcemap: true,
+  sourcemap: 'inline',
   logLevel: 'info',
+  // Platform / preloaded table rows — answered by the shell require().
   external: [
     'react',
     'react/jsx-runtime',
     'react-dom',
     '@deepseek-ai/cordis',
     '@deepseek-ai/dsh-client-ui-primitives',
-    '@deepseek-ai/dsh-client-ui-sidebar-documentpreview',
-    '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client',
     '@deepseek-ai/dsh-client-ui-slots',
-    '@deepseek-ai/dsh-client-locale',
-    '@deepseek-ai/dsh-client-locale/client',
-    '@deepseek-ai/dsh-util-workspace-path',
+    '@deepseek-ai/dsh-client-store',
   ],
 })
 
-// Host tsc excludes src/client; ship a small ambient .d.ts next to the bundle.
+const cjs = readFileSync(outfile, 'utf8')
+const wrapped = `window.__ModuleLoader__.load({
+  id: ${JSON.stringify(id)},
+  factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
+    Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+${cjs}
+    return module.exports;
+  }
+});
+`
+writeFileSync(join(root, 'lib', 'client.js'), wrapped)
 writeFileSync(
-  join(root, 'lib/client.d.ts'),
-  `/** Ambient types for the prebundled Client entry (\`lib/client.js\`). */
-export declare const name: string
-export declare const inject: string[]
-export declare function apply(ctx: unknown): void
-export declare const WEBCLAW_PREVIEW_ID: string
-export declare function installWebclawSurfaces(ctx: unknown): void
-`,
+  join(root, 'lib', 'client.js.map'),
+  JSON.stringify({ version: 3, file: 'client.js', sources: [], mappings: '' }),
 )
 
-console.log('webclaw client → lib/client.js + lib/client.d.ts')
+try {
+  const { unlinkSync } = await import('node:fs')
+  unlinkSync(outfile)
+} catch {
+  /* ignore */
+}
+
+console.log(`webclaw client → lib/client.js (ModuleLoader factory, id=${id})`)

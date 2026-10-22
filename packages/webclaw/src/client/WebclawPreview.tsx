@@ -2,7 +2,6 @@
 import type { ReactNode } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { CodeBlock } from '@deepseek-ai/dsh-client-ui-primitives'
-import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import type { DocumentPreviewProps } from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from './locales.ts'
 
@@ -14,17 +13,12 @@ export type WebclawPreviewProps = DocumentPreviewProps & PropsLocale<'webclawPre
  * @param props - document content from the sidebar owner.
  */
 export function WebclawPreview({
-  resourceAddress,
   content,
   wrap,
   scrollportRef,
   t,
 }: WebclawPreviewProps): ReactNode {
   if (content.kind !== 'text') return null
-  const file = parseFileAddress(resourceAddress)
-  if (file === undefined) {
-    throw new Error(`webclaw preview: not a file address "${resourceAddress}"`)
-  }
   return (
     <div data-webclaw-preview="" data-wrap={wrap ? 'true' : 'false'}>
       <CodeBlock
