@@ -746,7 +746,7 @@ pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
             if crate::run_sink::worker_mode() {
                 // DSH / lite：密码不得进对话。引导本机「设置 → 网站账号」表单。
                 Err(format!(
-                    "还没有「{query}」的登录账号。请用户打开 DSH「设置 → 网站账号」或双击 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd 填写（勿把密码发给助手）；webclaw_accounts_status 确认 has_password=true 后再跑。菜谱只写「登录{query}」，不要写「输入密码=…」。"
+                    "还没有「{query}」的登录入口。请用户在 DSH「设置 → 网站账号」只填登录 URL（飞书 SSO 用 …/login?sso=lark&…，密码可留空）；勿把密码发到对话。菜谱只写「登录{query}」。"
                 ))
             } else {
                 Err(format!(
