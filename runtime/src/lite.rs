@@ -75,6 +75,7 @@ pub fn print_usage() {
   webclaw-lite skills sync --from-dir <目录>
   webclaw-lite skills list
   webclaw-lite accounts list
+  webclaw-lite accounts ensure --id ehr|old-mes [--name 名称] --url URL
   webclaw-lite accounts set --id ehr|old-mes [--name 名称] [--url URL] --user 账号 --password 密码
 
 说明:

@@ -139,11 +139,13 @@ pub struct KnownLoginSystem {
 }
 
 pub fn known_login_catalog() -> &'static [KnownLoginSystem] {
+    // OSS: name/id slots only. Real login URLs belong in private DSH overlays
+    // (`config.systems` → `accounts ensure`), not in this public catalog.
     &[
         KnownLoginSystem {
             id: "ehr",
             name: "EHR系统",
-            url: "https://cleanpro.hcmcloud.cn/",
+            url: "https://example.com/",
         },
         KnownLoginSystem {
             id: "old-mes",
@@ -277,6 +279,86 @@ pub fn upsert_worker_account(
         url: saved.url,
         username: saved.username,
         has_password: saved.has_password,
+    })
+}
+
+/// 预制/更新系统入口（id + 名称 + 登录 URL），不要求也不覆盖账号密码。
+/// 供 DSH `config.systems` / `accounts ensure` 使用；密码仍由用户本机 `accounts set`。
+pub fn ensure_worker_system_entry(
+    id: Option<&str>,
+    name: Option<&str>,
+    url: &str,
+) -> Result<WorkerAccountItem, String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("accounts ensure 需要 --url".into());
+    }
+    if url.chars().count() > 255 {
+        return Err("应用地址不能超过 255 个字符".into());
+    }
+    let hint = id.or(name).unwrap_or("").trim();
+    let known = lookup_known_login(hint);
+    let system_id = id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| known.map(|k| k.id.to_string()))
+        .ok_or_else(|| "请指定系统，如 --id ehr 或 --name EHR系统".to_string())?;
+    let system_id = normalize_local_id(&system_id)?;
+    let system_name = name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| known.map(|k| k.name.to_string()))
+        .unwrap_or_else(|| system_id.clone());
+    if system_name.chars().count() > 64 {
+        return Err("应用名称不能超过 64 个字符".into());
+    }
+
+    let mut db = load_db()?;
+    let now = Utc::now();
+    if let Some(existing) = db.systems.iter_mut().find(|s| s.id == system_id) {
+        if existing.source == WebSystemSource::Local {
+            existing.name = system_name;
+            existing.url = url.to_string();
+        } else if existing.url.trim().is_empty() {
+            // Remote entries keep cloud name/url; only fill blank url as last resort.
+            existing.url = url.to_string();
+        }
+        existing.updated_at = now;
+        let saved = existing.clone();
+        save_db(&db)?;
+        return Ok(WorkerAccountItem {
+            id: saved.id,
+            name: saved.name,
+            url: saved.url,
+            username: saved.username,
+            has_password: !saved.password.is_empty(),
+        });
+    }
+
+    let mut system = WebSystem {
+        id: system_id,
+        name: system_name,
+        kind: WebSystemKind::Internal,
+        url: url.to_string(),
+        username: String::new(),
+        password: String::new(),
+        updated_at: now,
+        source: WebSystemSource::Local,
+        remark: String::new(),
+        remote_status: None,
+        has_password: false,
+    };
+    db.systems.push(system.clone());
+    save_db(&db)?;
+    system.password.clear();
+    Ok(WorkerAccountItem {
+        id: system.id,
+        name: system.name,
+        url: system.url,
+        username: system.username,
+        has_password: false,
     })
 }
 
@@ -662,8 +744,9 @@ pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
     match matches.len() {
         0 => {
             if crate::run_sink::worker_mode() {
+                // DSH / lite：密码不得进对话。提示本机 CLI，勿让模型向用户索要明文密码。
                 Err(format!(
-                    "还没有「{query}」的登录账号。请向用户要该系统的账号和密码，写入后再跑（webclaw-worker accounts set）"
+                    "还没有「{query}」的登录账号。部署方可用 cordis config.systems / accounts ensure 预制登录 URL；账号密码请在本机终端配置（勿发给助手）：webclaw-lite accounts set --id <id> --url <登录页> --user <账号> --password <密码>；然后 webclaw_accounts_status 确认 has_password=true 再跑。菜谱只写「登录{query}」，不要写「输入密码=…」。"
                 ))
             } else {
                 Err(format!(
@@ -742,7 +825,7 @@ mod tests {
             id: "ehr".into(),
             name: "EHR".into(),
             kind: WebSystemKind::Internal,
-            url: "https://cleanpro.hcmcloud.cn/".into(),
+            url: "https://ehr.example.com/".into(),
             username: String::new(),
             password: String::new(),
             updated_at: chrono::Utc::now(),
@@ -751,7 +834,7 @@ mod tests {
             remote_status: None,
             has_password: false,
         };
-        assert_eq!(login_url_for(&sys), "https://cleanpro.hcmcloud.cn/login");
+        assert_eq!(login_url_for(&sys), "https://ehr.example.com/login");
     }
 
     #[test]

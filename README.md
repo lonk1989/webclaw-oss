@@ -52,6 +52,10 @@ Ask the agent to run a recipe such as:
 打开https://example.com，等待2，采集
 ```
 
+When you paste a **full** multi-step recipe, the agent should call **one** `webclaw_run` with the entire body (not probe step-by-step).
+
+**Passwords:** keep them in the local vault (`webclaw-lite accounts set`), not in DSH chat. Recipes should say `登录EHR系统`, never `输入密码=…`. Private DSH forks may seed login **URLs** via `config.systems` (see `packages/webclaw/README.md`); OSS does not ship corp URLs.
+
 ### 2. Local dev (optional)
 
 Build lite from source when hacking the Rust CLI:

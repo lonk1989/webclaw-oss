@@ -16,6 +16,8 @@ export const zh = {
   codeBlockTitle: '菜谱',
   wrap: '换行',
   unwrap: '不换行',
+  paramsTitle: '可改参数（默认值）',
+  paramsHint: '执行时会先在对话里弹出参数表单，确认后再跑。',
 }
 
 /** English dictionary with the same keys. */
@@ -26,6 +28,8 @@ export const en = {
   codeBlockTitle: 'Recipe',
   wrap: 'Wrap',
   unwrap: 'Unwrap',
+  paramsTitle: 'Editable params (defaults)',
+  paramsHint: 'On run, the agent will show a param form in chat before starting.',
 } satisfies Record<keyof typeof zh, string>
 
 export const NS = 'webclawPreview'

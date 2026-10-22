@@ -6,8 +6,8 @@ Cordis plugin id: `webclaw` (fiber `id` in patch). npm package: **`@lonk1989/web
 
 ## What this is
 
-- Task tools: `webclaw_probe` / `webclaw_run` / `webclaw_freeze` / `webclaw_list_recipes` / `webclaw_import` / `webclaw_status` / `webclaw_human_reply` / `webclaw_cancel`
-- Bundled Skill: **authoring** → **freeze** `.webclaw` → **replay** by path
+- Task tools: `webclaw_probe` / `webclaw_run` / `webclaw_inspect_params` / `webclaw_accounts_status` / `webclaw_freeze` / `webclaw_list_recipes` / `webclaw_import` / `webclaw_status` / `webclaw_human_reply` / `webclaw_cancel`
+- Bundled Skill: **replay** (default) → **param form** when `参数…=` → **freeze** / **author** only for new sites
 - Local library: workspace `recipes/*.webclaw` (or `WEBCLAW_HOME/recipes`)
 - Preview/edit: DSH Files + sidebar plain text + open-in-app (no custom viewer)
 - Spawns local **webclaw-lite** (CDP; shared browser across probe/run)
@@ -37,6 +37,10 @@ pnpm add @lonk1989/webclaw
         # Optional overrides:
         # binaryPath: 'C:/path/to/webclaw-lite.exe'
         # liteBaseUrl: 'https://cdn.example.com/webclaw/v0.1.8'  # tried first
+        # systems:   # private DSH fork only — real login URLs, no passwords
+        #   - id: ehr
+        #     name: EHR系统
+        #     url: https://example.com/ehr-login
 ```
 
 ### webclaw-lite binary (Windows)
@@ -60,10 +64,45 @@ irm https://raw.githubusercontent.com/lonk1989/webclaw-oss/main/static/webclaw-l
 
 ## Model experience
 
-1. New site: `webclaw_probe` → short `webclaw_run` → freeze with `webclaw_freeze`
-2. User opens `recipes/*.webclaw` in Files — the Client half tints the file icon and opens a log-style recipe preview (no engine patches)
-3. Replay: `webclaw_run(recipePath=…)` only
-4. Uploaded `.webclaw`: `recipePath` once, or `webclaw_import` into the library
+1. **Default / replay:** user pastes a full recipe or points at `.webclaw` → `webclaw_run` — never probe step-by-step
+2. **参数 form:** recipes like `参数公司=…，参数月份=…` (see `examples/整理6月考勤.webclaw`) → first `webclaw_run` returns `needParams` (no browser yet) → model shows the fields → user edits or says「用默认」→ second `webclaw_run` with `paramsConfirmed=true` and optional `params` JSON. Config: `requireParamConfirm` (default true)
+3. New unknown site (no complete recipe): `webclaw_probe` → short `webclaw_run` → `webclaw_freeze`
+4. User opens `recipes/*.webclaw` in Files — Client tints the icon and shows a log-style preview
+5. Uploaded `.webclaw`: `recipePath` once (with param confirm if needed), or `webclaw_import` into the library
+
+## Site accounts / passwords (local only)
+
+DSH sends chat to the model over the network. **Do not put site passwords in recipes or chat.**
+
+### Deploy overlay: seed login URLs (no passwords)
+
+Private DSH forks can prefill **id / name / URL** on boot (OSS catalog only has placeholder URLs):
+
+```yaml
+config:
+  systems:
+    - id: ehr
+      name: EHR系统
+      url: https://your-corp-ehr-login/
+    - id: old-mes
+      name: 旧MES系统
+      url: https://your-corp-mes-login/
+```
+
+This runs `webclaw-lite accounts ensure` and never writes passwords. Keep real URLs in your private patch, not in public OSS.
+
+### User credentials (once per machine)
+
+Desktop used **设置 → 网站账号**. Under DSH the same vault is filled via the local CLI (Windows DPAPI at rest):
+
+```powershell
+# Path is usually the managed lite under %LOCALAPPDATA%\webclaw\bin\
+webclaw-lite accounts set --id ehr --url https://your-login --user alice --password '***'
+webclaw-lite accounts set --id old-mes --url https://mes-login --user alice --password '***'
+webclaw-lite accounts list   # shows username + hasPassword only
+```
+
+Recipes keep alias login only, e.g. `登录EHR系统` (see `examples/整理6月考勤.webclaw`). The agent may call `webclaw_accounts_status` to see what is configured; it must never ask you to paste a password into the conversation.
 
 ## License
 

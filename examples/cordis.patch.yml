@@ -6,7 +6,10 @@
 #   pnpm dsh web --patch examples/cordis.patch.yml
 #
 # Defaults auto-download webclaw-lite from GitHub Releases on Windows.
-# For local cargo builds only, set binaryPath explicitly:
+# For local cargo builds only, set binaryPath explicitly.
+#
+# systems: deploy overlay — id/name/url only (accounts ensure on boot). Put REAL
+# corp login URLs in your private DSH fork patch, not in this public example.
 
 - insert:
     - id: webclaw
@@ -15,3 +18,10 @@
         registerSkill: true
         recipesRel: recipes
         # binaryPath: 'E:/Workspace/webclaw-oss/target/release/webclaw-lite.exe'
+        # systems:
+        #   - id: ehr
+        #     name: EHR系统
+        #     url: https://example.com/ehr-login
+        #   - id: old-mes
+        #     name: 旧MES系统
+        #     url: https://example.com/mes-login

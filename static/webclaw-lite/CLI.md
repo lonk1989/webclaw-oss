@@ -16,7 +16,7 @@
 | `skills sync --from-dir <dir>` | Import local `.webclaw`/`.txt`/`.md` into skill cache | 0/2 |
 | `skills list` | List cached skill names | 0/2 |
 | `update` | Self-update (needs `WEBCLAW_LITE_BASE` or `WEBCLAW_WORKER_URL`) | 0/2 |
-| `accounts list` / `accounts set …` | Site accounts | 0/2 |
+| `accounts list` / `accounts ensure …` / `accounts set …` | Site accounts (`ensure` = URL only; `set` = credentials) | 0/2 |
 
 ## `recipe` (local library)
 

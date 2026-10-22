@@ -6,6 +6,7 @@
  * @module
  */
 
+import { readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
@@ -25,6 +26,13 @@ import {
   resolveRecipePath,
   type RecipesConfig,
 } from './recipes.js'
+import {
+  applyParamOverrides,
+  extractRecipeParams,
+  parseParamsArg,
+  type RecipeParamKv,
+} from './params.js'
+import { redactSecrets } from './redact.js'
 import { registerBundledSkill } from './skill.js'
 
 /** Cordis plugin id. */
@@ -62,6 +70,24 @@ export interface Config {
   recipesDir: string
   /** Relative recipes folder under session cwd (default `recipes`). */
   recipesRel: string
+  /**
+   * When true (default), recipes that declare `参数名=值` refuse to run until
+   * the model shows the param form and calls again with `paramsConfirmed=true`.
+   */
+  requireParamConfirm: boolean
+  /**
+   * Private deploy overlay: seed local vault entries (id + name + login URL only).
+   * No passwords. Applied via `webclaw-lite accounts ensure` after lite is ready.
+   * Put real corp URLs in your DSH fork patch — not in the public OSS defaults.
+   */
+  systems: SystemEntryConfig[]
+}
+
+/** One site entry for `config.systems` (URL only; credentials stay local). */
+export interface SystemEntryConfig {
+  id: string
+  name?: string
+  url: string
 }
 
 /** Validate plugin config from cordis.yml. */
@@ -75,7 +101,77 @@ export const Config: z<Partial<Config>, Config> = z.object({
   probeTimeoutMs: z.number().min(1_000).default(120_000),
   recipesDir: z.string().default(''),
   recipesRel: z.string().default('recipes'),
+  requireParamConfirm: z.boolean().default(true),
+  systems: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().default(''),
+        url: z.string(),
+      }),
+    )
+    .default([]),
 })
+
+/**
+ * Prefill local vault site entries from deploy config (id/name/url only).
+ */
+async function ensureConfiguredSystems(
+  config: Config,
+  ensured: EnsureLiteResult,
+  log: { info: (msg: string, ...args: unknown[]) => void; warn: (msg: string, ...args: unknown[]) => void },
+): Promise<void> {
+  const entries = config.systems ?? []
+  if (entries.length === 0) return
+  const env = liteEnvFrom(config, ensured, 60_000)
+  for (const entry of entries) {
+    const id = entry.id?.trim()
+    const url = entry.url?.trim()
+    if (!id || !url) {
+      log.warn('webclaw: systems entry skipped (need id + url)')
+      continue
+    }
+    const argv = ['accounts', 'ensure', '--id', id, '--url', url]
+    const name = entry.name?.trim()
+    if (name) argv.push('--name', name)
+    try {
+      const result = await runLite(env, argv)
+      if (result.code !== 0) {
+        log.warn(
+          'webclaw: accounts ensure failed id=%s: %s',
+          id,
+          (result.stderr || result.stdout).slice(0, 300),
+        )
+        continue
+      }
+      log.info('webclaw: accounts ensure ok id=%s url=%s', id, url)
+    } catch (error) {
+      log.warn(
+        'webclaw: accounts ensure error id=%s: %s',
+        id,
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+}
+
+function formatParamForm(params: readonly RecipeParamKv[]): string {
+  const rows = params.map(p => `- ${p.name}: ${p.value}`)
+  return [
+    '【菜谱参数表单 — 请展示给用户确认/修改后再跑】',
+    ...rows,
+    '',
+    '用户确认后再次调用 webclaw_run：传入 params（JSON，可改值）且 paramsConfirmed=true。',
+    '用户说「用默认」时：传 paramsConfirmed=true，params 可省略或传原值。',
+  ].join('\n')
+}
+
+/** Plain JSON rows for tool results (dsh-tools JsonValue). */
+function paramsJson(
+  params: readonly RecipeParamKv[],
+): Array<{ name: string; value: string }> {
+  return params.map(p => ({ name: p.name, value: p.value }))
+}
 
 function recipesCfg(config: Config): RecipesConfig {
   return {
@@ -137,14 +233,15 @@ export function apply(ctx: Context, config: Config): void {
     return liteEnvFrom(config, ensured, timeoutMs)
   }
 
-  if (config.ensureOnBoot) {
+  if (config.ensureOnBoot || (config.systems?.length ?? 0) > 0) {
     void ready()
-      .then(r => {
+      .then(async r => {
         ctx.logger.info(
           'webclaw: ensureOnBoot ok (downloaded=%s path=%s)',
           String(r.downloaded),
           r.binaryPath,
         )
+        await ensureConfiguredSystems(config, r, log)
       })
       .catch((error: unknown) => {
         ctx.logger.warn(
@@ -220,20 +317,31 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_run',
           description:
-            'Execute a Chinese natural-language browser recipe via webclaw-lite. Pass either inline `recipe` (authoring short segment) or `recipePath` (frozen .webclaw / attachment path). Replay: prefer recipePath only. No CSS/Playwright.',
+            'Execute a Chinese natural-language browser recipe via webclaw-lite in ONE call. If the user already gave a full recipe (many ， steps) or a .webclaw path, pass the ENTIRE body as `recipe` or use `recipePath`—do NOT probe or split into short segments. When the recipe declares 参数名=值, the first call returns needParams (show the form to the user); only after they confirm call again with paramsConfirmed=true (and optional params JSON overrides). No CSS/Playwright.',
           parameters: {
             recipe: {
               type: 'string',
-              description: 'Inline recipe body (Chinese commas ，). Mutually exclusive with recipePath.',
+              description:
+                'Inline recipe body (Chinese commas ，). Prefer the FULL user-supplied recipe in one call. Short segments only when authoring without a complete recipe. Mutually exclusive with recipePath.',
             },
             recipePath: {
               type: 'string',
               description:
-                'Path to .webclaw file: workspace-relative, recipes/<name>, absolute, or attachment read path',
+                'Path to .webclaw file: workspace-relative, recipes/<name>, absolute, or attachment read path. Prefer this when a frozen/uploaded file already exists.',
             },
             title: {
               type: 'string',
               description: 'Optional run title',
+            },
+            params: {
+              type: 'string',
+              description:
+                'Optional JSON object of param overrides after user edits the form, e.g. {"公司":"山西阳泉","月份":"2026-07"}. Merged into 参数… lines before run.',
+            },
+            paramsConfirmed: {
+              type: 'boolean',
+              description:
+                'Set true only after the user has seen/edited the 参数 form (or explicitly said to use defaults). Required to actually run when the recipe declares 参数…',
             },
           },
           output: {
@@ -241,10 +349,15 @@ export function apply(ctx: Context, config: Config): void {
             render: (_args, value) => {
               const v = value as {
                 ok?: boolean
+                needParams?: boolean
+                form?: string
                 run_dir?: string
                 error?: string
                 eventsTail?: string
                 recipePath?: string
+              }
+              if (v.needParams && v.form) {
+                return [{ type: 'text', text: v.form }]
               }
               const lines = [
                 v.ok ? 'webclaw_run: ok' : 'webclaw_run: failed',
@@ -256,7 +369,7 @@ export function apply(ctx: Context, config: Config): void {
               return [{ type: 'text', text: lines.join('\n') }]
             },
           },
-          async execute(args, exec) {
+          async execute(args, exec): Promise<Record<string, any>> {
             const inline = args.recipe?.trim() ?? ''
             const pathArg = args.recipePath?.trim() ?? ''
             if (inline && pathArg) {
@@ -266,9 +379,40 @@ export function apply(ctx: Context, config: Config): void {
               throw new Error('recipe or recipePath is required')
             }
             const cwd = agentCwd(exec)
-            const path = pathArg
+            const sourcePath = pathArg
               ? resolveRecipePath(recipesCfg(config), pathArg, cwd)
-              : writeTempRecipe(inline)
+              : undefined
+            const rawContent = inline
+              ? inline
+              : readFileSync(sourcePath!, { encoding: 'utf8' })
+
+            const declared = extractRecipeParams(rawContent)
+            const overrides = parseParamsArg(args.params)
+            const confirmed = args.paramsConfirmed === true
+
+            if (
+              config.requireParamConfirm &&
+              declared.length > 0 &&
+              !confirmed
+            ) {
+              const preview = applyParamOverrides(rawContent, overrides)
+              return {
+                ok: false,
+                needParams: true,
+                params: paramsJson(preview.params),
+                form: formatParamForm(preview.params),
+                error:
+                  'needParams: show the form to the user; do not start the browser yet',
+                recipePath: sourcePath ?? '',
+              }
+            }
+
+            const merged = applyParamOverrides(rawContent, overrides)
+            const path =
+              declared.length > 0 || overrides
+                ? writeTempRecipe(merged.content)
+                : sourcePath ?? writeTempRecipe(rawContent)
+
             const argv = ['run', '--recipe', path]
             if (args.title?.trim()) {
               argv.push('--title', args.title.trim())
@@ -287,6 +431,7 @@ export function apply(ctx: Context, config: Config): void {
               okCount: done?.okCount ?? null,
               fail: done?.fail ?? null,
               run_dir: done?.run_dir ?? '',
+              params: paramsJson(merged.params),
               error:
                 done?.error ||
                 (ok
@@ -296,13 +441,153 @@ export function apply(ctx: Context, config: Config): void {
                         ? `run failed (ok=${done.okCount ?? '?'}, fail=${done.fail ?? '?'})`
                         : 'run failed: no done event')
                     ).slice(0, 500)),
-              eventsTail: result.stdout.slice(-8000),
+              eventsTail: redactSecrets(result.stdout.slice(-8000)),
               recipePath: path,
             }
           },
         }),
       ),
     'webclaw: tool webclaw_run',
+  )
+
+  ctx.effect(
+    () =>
+      ctx.tools.register(
+        defineTool({
+          name: 'webclaw_accounts_status',
+          description:
+            'List local site accounts (id/name/url/username/has_password only — NEVER passwords). Secrets live in the local webclaw vault (DPAPI on Windows), not in DSH chat. If has_password is false, tell the user to run webclaw-lite accounts set in a local terminal; do NOT ask them to paste passwords into chat.',
+          parameters: {},
+          output: {
+            schema: { type: 'object', additionalProperties: true },
+            render: (_args, value) => [
+              {
+                type: 'text',
+                text: typeof value === 'object'
+                  ? JSON.stringify(value, null, 2)
+                  : String(value),
+              },
+            ],
+          },
+          async execute(): Promise<Record<string, any>> {
+            const ensured = await ready()
+            const result = await runLite(liteEnvFrom(config, ensured), [
+              'accounts',
+              'list',
+            ])
+            const text = `${result.stdout}\n${result.stderr}`.trim()
+            const parsed = parseJsonObject(result.stdout) ?? parseJsonObject(text)
+            if (parsed && parsed.type === 'accounts') {
+              const items = Array.isArray(parsed.items)
+                ? parsed.items.map((it: Record<string, unknown>) => ({
+                    id: String(it.id ?? ''),
+                    name: String(it.name ?? ''),
+                    url: String(it.url ?? ''),
+                    username: String(it.username ?? ''),
+                    has_password: Boolean(
+                      it.has_password ?? it.hasPassword ?? false,
+                    ),
+                  }))
+                : []
+              return {
+                ok: result.code === 0,
+                type: 'accounts',
+                items,
+                setupHint:
+                  '入口 URL 可由部署方 cordis config.systems 预制（accounts ensure，无密码）。\n' +
+                  '缺失密码时请用户在本机终端执行（不要把密码发给你）：\n' +
+                  'webclaw-lite accounts set --id ehr --url <登录页URL> --user <账号> --password <密码>\n' +
+                  '菜谱只写「登录EHR系统」，不要写「输入密码=…」或 {{ehr.密码}}。',
+                binaryPath: ensured.binaryPath,
+              }
+            }
+            return {
+              ok: false,
+              type: 'accounts',
+              error: redactSecrets(
+                (result.stderr || result.stdout || 'accounts list failed').slice(
+                  0,
+                  500,
+                ),
+              ),
+              setupHint:
+                '部署方可 config.systems 预制 URL；密码：webclaw-lite accounts set --id … --user … --password …',
+              binaryPath: ensured.binaryPath,
+            }
+          },
+        }),
+      ),
+    'webclaw: tool webclaw_accounts_status',
+  )
+
+  ctx.effect(
+    () =>
+      ctx.tools.register(
+        defineTool({
+          name: 'webclaw_inspect_params',
+          description:
+            'Extract editable 参数名=值 fields from a recipe (desktop 参数栏 equivalents). Call before run when you need to show the user a param form; then webclaw_run with params + paramsConfirmed=true.',
+          parameters: {
+            recipe: {
+              type: 'string',
+              description: 'Inline recipe body. Mutually exclusive with recipePath.',
+            },
+            recipePath: {
+              type: 'string',
+              description: 'Path to .webclaw file',
+            },
+          },
+          output: {
+            schema: { type: 'object', additionalProperties: true },
+            render: (_args, value) => {
+              const v = value as {
+                form?: string
+                params?: RecipeParamKv[]
+                error?: string
+              }
+              if (v.form) return [{ type: 'text', text: v.form }]
+              if (v.error) return [{ type: 'text', text: v.error }]
+              return [
+                {
+                  type: 'text',
+                  text: JSON.stringify(v.params ?? [], null, 2),
+                },
+              ]
+            },
+          },
+          async execute(args, exec): Promise<Record<string, any>> {
+            const inline = args.recipe?.trim() ?? ''
+            const pathArg = args.recipePath?.trim() ?? ''
+            if (inline && pathArg) {
+              throw new Error('pass either recipe or recipePath, not both')
+            }
+            if (!inline && !pathArg) {
+              throw new Error('recipe or recipePath is required')
+            }
+            const cwd = agentCwd(exec)
+            const content = inline
+              ? inline
+              : readFileSync(
+                  resolveRecipePath(recipesCfg(config), pathArg, cwd),
+                  { encoding: 'utf8' },
+                )
+            const params = extractRecipeParams(content)
+            return {
+              ok: true,
+              params: paramsJson(params),
+              form:
+                params.length > 0
+                  ? formatParamForm(params)
+                  : '（该菜谱没有「参数」声明，可直接 webclaw_run）',
+              hint:
+                params.length > 0
+                  ? 'Show form to user, then webclaw_run(..., paramsConfirmed=true)'
+                  : 'No static params; run directly',
+            }
+          },
+        }),
+      ),
+    'webclaw: tool webclaw_inspect_params',
   )
 
   ctx.effect(
@@ -435,7 +720,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_probe',
           description:
-            'Authoring-only: scan the current browser page (or open url first) and return recipe-ready textCmd/indexCmd/clickCmd/inputCmd. Multi-round: probe → short webclaw_run → probe again without url. Do not invent control labels; do not use for stable replay.',
+            'Authoring-only when NO complete recipe exists yet: scan the page (or open url) and return textCmd/indexCmd/clickCmd/inputCmd. NEVER call this if the user already pasted a full recipe or gave recipePath—use webclaw_run once instead. After a failed full run, at most one probe to edit the recipe, then re-run the full body. Do not invent labels.',
           parameters: {
             url: {
               type: 'string',

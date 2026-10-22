@@ -38,6 +38,7 @@ fn print_usage() {
   webclaw-worker run --stdin [--title 名称] [--params JSON]
   webclaw-worker status [--run-id <id>]
   webclaw-worker accounts list
+  webclaw-worker accounts ensure --id ehr|old-mes [--name 名称] --url URL
   webclaw-worker accounts set --id ehr|old-mes [--name 名称] [--url URL] --user 账号 --password 密码
   webclaw-worker job --file <file.webclawjob>
   webclaw-worker secret-install --file <webclaw-remote-secret>
@@ -502,6 +503,48 @@ fn accounts_cli(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
+        "ensure" => {
+            let mut id = None;
+            let mut name = None;
+            let mut url = None;
+            let mut i = 3;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--id" => {
+                        i += 1;
+                        id = args.get(i).cloned();
+                    }
+                    "--name" => {
+                        i += 1;
+                        name = args.get(i).cloned();
+                    }
+                    "--url" => {
+                        i += 1;
+                        url = args.get(i).cloned();
+                    }
+                    other => return Err(format!("未知参数: {other}")),
+                }
+                i += 1;
+            }
+            let url = url.ok_or("accounts ensure 需要 --url")?;
+            let saved = crate::web_systems::ensure_worker_system_entry(
+                id.as_deref(),
+                name.as_deref(),
+                &url,
+            )?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "type": "account_ensured",
+                    "id": saved.id,
+                    "name": saved.name,
+                    "url": saved.url,
+                    "username": saved.username,
+                    "hasPassword": saved.has_password,
+                })
+            );
+            Ok(())
+        }
         "set" => {
             let mut id = None;
             let mut name = None;
@@ -561,7 +604,7 @@ fn accounts_cli(args: &[String]) -> Result<(), String> {
             print_usage();
             Ok(())
         }
-        other => Err(format!("未知 accounts 子命令: {other}（用 list / set）")),
+        other => Err(format!("未知 accounts 子命令: {other}（用 list / ensure / set）")),
     }
 }
 
