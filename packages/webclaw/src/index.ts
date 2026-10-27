@@ -446,10 +446,12 @@ export function apply(ctx: Context, config: Config): void {
               description: 'Optional run title',
             },
             // Loose schema: models pass object or JSON string; Host parses both.
+            // Must declare type — typeless params make defineTool abort the whole fiber.
             params: {
+              type: 'json',
               description:
                 'Param overrides. Prefer object {"休假项目":"年假",...}; JSON string also ok.',
-            } as any,
+            },
             paramsConfirmed: {
               type: 'boolean',
               description:
@@ -569,6 +571,7 @@ export function apply(ctx: Context, config: Config): void {
               !ok &&
               missingCreds.length > 0 &&
               /账号|密码|网站账号|凭据/u.test(errorText)
+            // Omit undefined fields — dsh tools require lossless JSON (no nested undefined).
             return {
               ok,
               exitCode: result.code ?? -1,
@@ -576,8 +579,10 @@ export function apply(ctx: Context, config: Config): void {
               fail: done?.fail ?? null,
               run_dir: done?.run_dir ?? '',
               params: paramsJson(merged.params),
-              missingCredentials: missingCreds.length > 0 ? missingCreds : undefined,
-              setupHint: needsCredHint ? CREDENTIALS_SETUP_HINT : undefined,
+              ...(missingCreds.length > 0
+                ? { missingCredentials: missingCreds }
+                : {}),
+              ...(needsCredHint ? { setupHint: CREDENTIALS_SETUP_HINT } : {}),
               error: errorText,
               eventsTail: redactSecrets(result.stdout.slice(-8000)),
               recipePath: path,
