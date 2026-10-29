@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# webclaw-lite macOS/Linux 安装
+# webclaw-lite macOS/Linux 安装（默认从 GitHub Releases 拉取）
 set -euo pipefail
 
-BASE="${WEBCLAW_LITE_BASE:-https://zhjmessaastest.clean-pro.cn:1081/agent/webclaw-server/webclaw-lite}"
-BASE="${BASE%/}"
 HOME_DIR="${WEBCLAW_HOME:-$HOME/.webclaw}"
 BIN_DIR="$HOME_DIR/bin"
 mkdir -p "$BIN_DIR" "$HOME_DIR/runs" "$HOME_DIR/recipes"
@@ -17,7 +15,11 @@ case "$OS-$ARCH" in
   *) echo "不支持的平台: $OS $ARCH" >&2; exit 2 ;;
 esac
 
-URL="${WEBCLAW_WORKER_URL:-$BASE/release/$FILE}"
+# Flat Release layout: …/download/<asset> (not …/release/<asset>).
+DEFAULT_BASE="https://github.com/lonk1989/webclaw-oss/releases/latest/download"
+BASE="${WEBCLAW_LITE_BASE:-$DEFAULT_BASE}"
+BASE="${BASE%/}"
+URL="${WEBCLAW_WORKER_URL:-$BASE/$FILE}"
 DEST="$BIN_DIR/webclaw-lite"
 TMP="$BIN_DIR/webclaw-lite.download.$$"
 
@@ -35,3 +37,4 @@ export WEBCLAW_HOME="$HOME_DIR"
 "$DEST" install
 "$DEST" status
 echo "[webclaw-lite] installed -> $DEST"
+echo "[webclaw-lite] tip: if macOS Gatekeeper blocks the binary: xattr -d com.apple.quarantine \"$DEST\""

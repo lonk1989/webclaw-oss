@@ -1,5 +1,5 @@
 /**
- * Bootstrap webclaw-lite from GitHub Releases (Windows x64).
+ * Bootstrap webclaw-lite from GitHub Releases (Windows x64 + macOS arm64/x64).
  * npm ships only the Cordis plugin; the native CLI is downloaded on demand.
  * Download tries config → official → env mirrors → built-in CN-friendly mirrors.
  */
@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -24,12 +25,11 @@ const PKG = require('../package.json') as { version: string }
 /** npm package version — Release tag is `v${PLUGIN_VERSION}`. */
 export const PLUGIN_VERSION = PKG.version
 
-const EXE_NAME = 'webclaw-lite-windows-x64.exe'
-const MANAGED_EXE = 'webclaw-lite.exe'
+const MANAGED_EXE_WIN = 'webclaw-lite.exe'
 const VERSION_STAMP = '.webclaw-lite-npm-version'
 const FETCH_TIMEOUT_MS = 60_000
 
-/** Sentinel / empty binaryPath → use managed `%LOCALAPPDATA%/webclaw/bin/…`. */
+/** Sentinel / empty binaryPath → use managed home/bin binary. */
 const MANAGED_SENTINELS = new Set(['', 'webclaw-lite', 'webclaw-lite.exe'])
 
 /**
@@ -68,6 +68,24 @@ let inflight: Promise<EnsureLiteResult> | undefined
  */
 export function defaultLiteBaseUrl(version = PLUGIN_VERSION): string {
   return `https://github.com/lonk1989/webclaw-oss/releases/download/v${version}`
+}
+
+/**
+ * Release asset filename for the current host (or null if unsupported).
+ * macOS x64 name is reserved even when CI only publishes arm64.
+ */
+export function releaseAssetName(
+  platform = process.platform,
+  arch = process.arch,
+): string | null {
+  if (platform === 'win32') {
+    return 'webclaw-lite-windows-x64.exe'
+  }
+  if (platform === 'darwin') {
+    if (arch === 'arm64') return 'webclaw-lite-macos-arm64'
+    if (arch === 'x64') return 'webclaw-lite-macos-x64'
+  }
+  return null
 }
 
 function normalizeBase(url: string): string {
@@ -159,7 +177,7 @@ export function resolveWebclawHome(config: EnsureLiteConfig): string {
  */
 export function managedBinaryPath(home: string): string {
   if (process.platform === 'win32') {
-    return join(home, 'bin', MANAGED_EXE)
+    return join(home, 'bin', MANAGED_EXE_WIN)
   }
   return join(home, 'bin', 'webclaw-lite')
 }
@@ -240,9 +258,10 @@ async function download(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Buff
 async function downloadFromBase(
   home: string,
   baseUrl: string,
+  assetName: string,
   log: EnsureLog,
 ): Promise<void> {
-  const exeUrl = `${normalizeBase(baseUrl)}/${EXE_NAME}`
+  const exeUrl = `${normalizeBase(baseUrl)}/${assetName}`
   const shaUrl = `${exeUrl}.sha256`
   log.info('webclaw: downloading %s', exeUrl)
 
@@ -254,7 +273,7 @@ async function downloadFromBase(
   const actual = createHash('sha256').update(body).digest('hex')
   if (actual !== expected) {
     throw new Error(
-      `sha256 mismatch for ${EXE_NAME}: expected ${expected}, got ${actual}`,
+      `sha256 mismatch for ${assetName}: expected ${expected}, got ${actual}`,
     )
   }
 
@@ -263,12 +282,22 @@ async function downloadFromBase(
   const dest = managedBinaryPath(home)
   const tmp = `${dest}.download`
   writeFileSync(tmp, body)
+  if (process.platform !== 'win32') {
+    chmodSync(tmp, 0o755)
+  }
   try {
     if (existsSync(dest)) unlinkSync(dest)
   } catch {
     /* replace below */
   }
   renameSync(tmp, dest)
+  if (process.platform !== 'win32') {
+    try {
+      chmodSync(dest, 0o755)
+    } catch {
+      /* best-effort */
+    }
+  }
   writeStamp(home, PLUGIN_VERSION)
   log.info('webclaw: installed %s (%s) from %s', dest, PLUGIN_VERSION, baseUrl)
 }
@@ -281,9 +310,10 @@ async function downloadManagedWithFallback(
   bases: readonly string[],
   log: EnsureLog,
 ): Promise<string> {
-  if (process.platform !== 'win32') {
+  const assetName = releaseAssetName()
+  if (!assetName) {
     throw new Error(
-      'webclaw-lite auto-install currently supports Windows x64 only. ' +
+      `webclaw-lite auto-install does not support ${process.platform}/${process.arch}. ` +
         'Build from source or set config.binaryPath to a local binary. ' +
         'See https://github.com/lonk1989/webclaw-oss',
     )
@@ -292,7 +322,7 @@ async function downloadManagedWithFallback(
   const errors: string[] = []
   for (const base of bases) {
     try {
-      await downloadFromBase(home, base, log)
+      await downloadFromBase(home, base, assetName, log)
       return base
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)

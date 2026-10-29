@@ -10,7 +10,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh = {
   sectionLabel: '网站账号',
   intro:
-    '登录地址与可选账号密码只保存在本机 webclaw 保险箱（Windows 下 DPAPI）。飞书 SSO 等只需填写正确的登录 URL（如 …/login?sso=lark&…），密码可留空。密码框留空表示不修改已保存的密码；勿把密码发到对话里。',
+    '登录地址与可选账号密码只保存在本机 webclaw 保险箱（Windows 下 DPAPI，macOS/Linux 为本机混淆存储）。飞书 SSO 等只需填写正确的登录 URL（如 …/login?sso=lark&…），密码可留空。密码框留空表示不修改已保存的密码；勿把密码发到对话里。',
   loading: '正在连接本机配置服务…',
   loadFailed: '加载失败',
   url: '登录地址',
@@ -26,15 +26,17 @@ export const zh = {
   openStandalone: '在浏览器中打开本机配置页',
   offlineTitle: '本机账号配置服务未就绪',
   offlineHint:
-    '请确认 DSH 已加载 webclaw 插件且 Host 在本机运行。也可双击本机启动脚本（无需把 webclaw-lite 加入 PATH）：',
+    '请确认 DSH 已加载 webclaw 插件且 Host 在本机运行。也可运行本机启动脚本（无需把 webclaw-lite 加入 PATH）：',
   offlineCmd:
-    '%LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd\n（首次启动 DSH / 调用 webclaw 工具后会自动生成）',
+    'Windows: %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd\n' +
+    'macOS: ~/.webclaw/bin/webclaw-accounts\n' +
+    '（首次启动 DSH / 调用 webclaw 工具后会自动生成）',
 }
 
 export const en = {
   sectionLabel: 'Site accounts',
   intro:
-    'Login URL and optional credentials stay in the local webclaw vault (DPAPI on Windows). Feishu SSO only needs the correct login URL (e.g. …/login?sso=lark&…); password may be blank. Leave password blank to keep the stored secret — never paste passwords into chat.',
+    'Login URL and optional credentials stay in the local webclaw vault (DPAPI on Windows; obfuscated storage on macOS/Linux). Feishu SSO only needs the correct login URL (e.g. …/login?sso=lark&…); password may be blank. Leave password blank to keep the stored secret — never paste passwords into chat.',
   loading: 'Connecting to local accounts service…',
   loadFailed: 'Failed to load',
   url: 'Login URL',
@@ -52,7 +54,9 @@ export const en = {
   offlineHint:
     'Make sure the webclaw plugin is loaded and the Host runs on this machine. Or open the launcher (no PATH needed):',
   offlineCmd:
-    '%LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd\n(created after DSH boot / first webclaw tool call)',
+    'Windows: %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd\n' +
+    'macOS: ~/.webclaw/bin/webclaw-accounts\n' +
+    '(created after DSH boot / first webclaw tool call)',
 } satisfies Record<keyof typeof zh, string>
 
 export const ACCOUNTS_NS = 'webclawAccounts'

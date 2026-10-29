@@ -29,7 +29,7 @@ Same recipe → same business path. Prefer fixing the recipe over inventing CSS 
 dsh plugin --profile web add @lonk1989/webclaw
 ```
 
-On **Windows**, the plugin **auto-downloads** `webclaw-lite` from [GitHub Releases](https://github.com/lonk1989/webclaw-oss/releases) on first boot / tool call (SHA256 verified → `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe`). No separate hand install.
+On **Windows** and **macOS (Apple Silicon)**, the plugin **auto-downloads** `webclaw-lite` from [GitHub Releases](https://github.com/lonk1989/webclaw-oss/releases) on first boot / tool call (SHA256 verified → `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe` or `~/.webclaw/bin/webclaw-lite`). No separate hand install. If macOS Gatekeeper blocks the binary: `xattr -d com.apple.quarantine ~/.webclaw/bin/webclaw-lite`.
 
 Mount with an **`insert:`** patch (a bare `- id:` only updates an existing row):
 

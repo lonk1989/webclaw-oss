@@ -38,7 +38,7 @@ Deterministic browser RPA driven by **Chinese natural-language recipes** stored 
 1. Prefer Host tools: `webclaw_status`, `webclaw_accounts_status`, `webclaw_inspect_params`, `webclaw_probe`, `webclaw_run`, `webclaw_freeze`, `webclaw_list_recipes`, `webclaw_import`, `webclaw_human_reply`, `webclaw_cancel`
 2. **Forbidden**: Playwright / Puppeteer / CSS / invented verbs / labels not in the latest probe (authoring only)
 3. Chat attachments are one-shot. Durable library: `webclaw_import` / `webclaw_freeze`
-4. **Install**: Windows plugin auto-downloads lite. Non-Windows: build `runtime/` or set `binaryPath`
+4. **Install**: Windows / macOS (arm64) plugin auto-downloads lite. Intel Mac / Linux: build `runtime/` or set `binaryPath`. Gatekeeper: `xattr -d com.apple.quarantine ~/.webclaw/bin/webclaw-lite`
 5. Never turn a long user recipe into multi-round probe
 6. **参数**: Prefab defaults are placeholders — confirm or「用默认」. If the user already supplied the values in chat, merge into `params` and run; do not re-interview
 7. **Secrets / SSO**: Never ask for or accept passwords in chat. Never invent `accounts set --password`. Feishu SSO = URL only in **设置 → 网站账号**

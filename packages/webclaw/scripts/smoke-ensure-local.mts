@@ -20,11 +20,15 @@ import {
   candidateLiteBaseUrls,
   ensureLite,
   PLUGIN_VERSION,
+  releaseAssetName,
 } from '../src/ensure-lite.ts'
 
 const releaseDir = mkdtempSync(join(tmpdir(), 'webclaw-release-'))
 const body = Buffer.from('webclaw-lite-fake-for-ensure-local')
-const exeName = 'webclaw-lite-windows-x64.exe'
+const exeName = releaseAssetName()
+if (!exeName) {
+  throw new Error(`smoke unsupported on ${process.platform}/${process.arch}`)
+}
 writeFileSync(join(releaseDir, exeName), body)
 const sha = createHash('sha256').update(body).digest('hex')
 writeFileSync(join(releaseDir, `${exeName}.sha256`), `${sha}  ${exeName}`)
@@ -67,7 +71,10 @@ try {
       error instanceof Error ? error.message.slice(0, 160) : error,
     )
   }
-  const exe = join(home, 'bin', 'webclaw-lite.exe')
+  const exe =
+    process.platform === 'win32'
+      ? join(home, 'bin', 'webclaw-lite.exe')
+      : join(home, 'bin', 'webclaw-lite')
   const stamp = join(home, 'bin', '.webclaw-lite-npm-version')
   if (!existsSync(exe)) throw new Error(`missing ${exe}`)
   if (readFileSync(stamp, 'utf8').trim() !== PLUGIN_VERSION) {

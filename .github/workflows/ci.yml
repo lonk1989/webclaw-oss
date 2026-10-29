@@ -8,7 +8,17 @@ on:
 
 jobs:
   rust-lite:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: webclaw-lite-windows-x64
+            binary: target/release/webclaw-lite.exe
+          - os: macos-latest
+            artifact: webclaw-lite-macos-arm64
+            binary: target/release/webclaw-lite
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -17,8 +27,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: webclaw-lite-windows-x64
-          path: target/release/webclaw-lite.exe
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
 
   webclaw-plugin:
     runs-on: ubuntu-latest

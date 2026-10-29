@@ -6,7 +6,7 @@
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { chmodSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LiteEnv } from './spawn.js'
 import { listAccounts, saveAccountFromForm } from './accounts-vault.js'
@@ -170,12 +170,30 @@ function writeLaunchers(opts: {
 }): void {
   const binDir = join(opts.home, 'bin')
   mkdirSync(binDir, { recursive: true })
-  const lite = opts.binaryPath.replace(/\//g, '\\')
-  // Absolute-path wrappers so users need not put webclaw-lite on PATH.
-  const liteCmd = `@echo off\r\n"${lite}" %*\r\n`
-  writeFileSync(join(binDir, 'webclaw-lite.cmd'), liteCmd, 'utf8')
-  const accountsCmd = `@echo off\r\necho Opening webclaw accounts UI...\r\nstart "" "${opts.url}"\r\n`
-  writeFileSync(join(binDir, 'webclaw-accounts.cmd'), accountsCmd, 'utf8')
+  if (process.platform === 'win32') {
+    const lite = opts.binaryPath.replace(/\//g, '\\')
+    // Absolute-path wrappers so users need not put webclaw-lite on PATH.
+    const liteCmd = `@echo off\r\n"${lite}" %*\r\n`
+    writeFileSync(join(binDir, 'webclaw-lite.cmd'), liteCmd, 'utf8')
+    const accountsCmd = `@echo off\r\necho Opening webclaw accounts UI...\r\nstart "" "${opts.url}"\r\n`
+    writeFileSync(join(binDir, 'webclaw-accounts.cmd'), accountsCmd, 'utf8')
+  } else {
+    const lite = opts.binaryPath
+    const liteSh = `#!/bin/sh\nexec "${lite}" "$@"\n`
+    const accountsSh =
+      `#!/bin/sh\necho "Opening webclaw accounts UI..."\n` +
+      `open "${opts.url}" 2>/dev/null || xdg-open "${opts.url}" 2>/dev/null || echo "${opts.url}"\n`
+    const litePath = join(binDir, 'webclaw-lite.sh')
+    const accountsPath = join(binDir, 'webclaw-accounts')
+    writeFileSync(litePath, liteSh, 'utf8')
+    writeFileSync(accountsPath, accountsSh, 'utf8')
+    try {
+      chmodSync(litePath, 0o755)
+      chmodSync(accountsPath, 0o755)
+    } catch {
+      /* best-effort */
+    }
+  }
   writeFileSync(
     join(opts.home, 'accounts-ui.json'),
     JSON.stringify({ url: opts.url, port: Number(new URL(opts.url).port), bind: '127.0.0.1' }, null, 2),

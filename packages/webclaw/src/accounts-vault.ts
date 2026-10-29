@@ -36,10 +36,17 @@ export function isSsoAccountUrl(url: string): boolean {
  * Never paste `accounts set` CLI or ask for passwords in chat.
  * SSO sites only need the correct login URL in 设置 → 网站账号.
  */
+function accountsLauncherHint(): string {
+  if (process.platform === 'win32') {
+    return '%LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd'
+  }
+  return '~/.webclaw/bin/webclaw-accounts'
+}
+
 export const CREDENTIALS_SETUP_HINT =
   '多数站点（含飞书 SSO）只需正确的登录 URL，不要要密码、不要发 accounts set 命令。\n' +
   '请用户在 DSH「设置 → 网站账号」把 EHR URL 设为 SSO 入口（例如 …/login?sso=lark&next=…），保存即可。\n' +
-  '也可打开 %LOCALAPPDATA%\\webclaw\\bin\\webclaw-accounts.cmd。禁止 probe / 禁止在对话里要密码。'
+  `也可打开 ${accountsLauncherHint()}。禁止 probe / 禁止在对话里要密码。`
 
 /**
  * Fix YAML / double-encoding: `\\u0026` → `&` so SSO query strings stay intact.

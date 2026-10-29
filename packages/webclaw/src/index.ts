@@ -2,7 +2,7 @@
  * @lonk1989/webclaw — recipe-level browser RPA for DeepSeek Harness.
  *
  * Registers task tools that spawn webclaw-lite. Does not claim ctx.browserUse.
- * On Windows, ensureOnBoot (default true) downloads lite from GitHub Releases.
+ * On Windows / macOS, ensureOnBoot (default true) downloads lite from GitHub Releases.
  * @module
  */
 
@@ -60,7 +60,9 @@ export const inject = ['tools']
 export interface Config {
   /**
    * Absolute path to webclaw-lite, or empty / `webclaw-lite` to use the managed
-   * `%LOCALAPPDATA%/webclaw/bin/webclaw-lite.exe` (auto-downloaded on Windows).
+   * binary (auto-downloaded on Windows / macOS from GitHub Releases).
+   * Windows: `%LOCALAPPDATA%/webclaw/bin/webclaw-lite.exe`
+   * macOS: `~/.webclaw/bin/webclaw-lite`
    */
   binaryPath: string
   /** Maps to WEBCLAW_HOME. */
@@ -369,7 +371,7 @@ export function apply(ctx: Context, config: Config): void {
         defineTool({
           name: 'webclaw_status',
           description:
-            'Check local webclaw-lite readiness (Chrome path, product, chromeOk). Prefer this before run when unsure the CLI is installed. On Windows, missing lite is auto-downloaded from GitHub Releases.',
+            'Check local webclaw-lite readiness (Chrome path, product, chromeOk). Prefer this before run when unsure the CLI is installed. On Windows / macOS, missing lite is auto-downloaded from GitHub Releases.',
           parameters: {
             run_id: {
               type: 'string',

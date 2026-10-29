@@ -11,26 +11,44 @@ permissions:
 
 jobs:
   release-lite:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: webclaw-lite-windows-x64.exe
+            binary: target/release/webclaw-lite.exe
+          - os: macos-latest
+            asset: webclaw-lite-macos-arm64
+            binary: target/release/webclaw-lite
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Build webclaw-lite
         run: cargo build --release --bin webclaw-lite --manifest-path runtime/Cargo.toml
-      - name: Hash
+      - name: Stage asset + SHA256 (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $exe = "target/release/webclaw-lite.exe"
-          Copy-Item $exe "webclaw-lite-windows-x64.exe"
-          Get-FileHash "webclaw-lite-windows-x64.exe" -Algorithm SHA256 |
-            ForEach-Object { $_.Hash.ToLower() + "  webclaw-lite-windows-x64.exe" } |
-            Set-Content "webclaw-lite-windows-x64.exe.sha256" -NoNewline
+          Copy-Item "${{ matrix.binary }}" "${{ matrix.asset }}"
+          Get-FileHash "${{ matrix.asset }}" -Algorithm SHA256 |
+            ForEach-Object { $_.Hash.ToLower() + "  ${{ matrix.asset }}" } |
+            Set-Content "${{ matrix.asset }}.sha256" -NoNewline
+      - name: Stage asset + SHA256 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cp "${{ matrix.binary }}" "${{ matrix.asset }}"
+          shasum -a 256 "${{ matrix.asset }}" | awk '{print tolower($1) "  ${{ matrix.asset }}"}' > "${{ matrix.asset }}.sha256"
+          # strip trailing newline variance: keep single line without extra blank
+          tr -d '\n' < "${{ matrix.asset }}.sha256" > "${{ matrix.asset }}.sha256.tmp"
+          mv "${{ matrix.asset }}.sha256.tmp" "${{ matrix.asset }}.sha256"
       - name: Upload GitHub Release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            webclaw-lite-windows-x64.exe
-            webclaw-lite-windows-x64.exe.sha256
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

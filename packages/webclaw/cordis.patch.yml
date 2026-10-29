@@ -5,7 +5,8 @@
 #   # or: pnpm add E:/Workspace/webclaw-oss/packages/webclaw
 #   pnpm dsh web --patch path/to/this/file
 #
-# Defaults: ensureOnBoot downloads webclaw-lite from GitHub Releases (Windows).
+# Defaults: ensureOnBoot downloads webclaw-lite from GitHub Releases
+# (Windows x64 + macOS arm64).
 #
 # systems: optional deploy overlay — seeds local vault entries (id/name/url only,
 # no passwords) via `accounts ensure` on boot. Put REAL corp login URLs in your
@@ -18,7 +19,7 @@
         registerSkill: true
         recipesRel: recipes
         # ensureOnBoot: true   # default
-        # binaryPath: 'C:/path/to/webclaw-lite.exe'  # skip auto-download
+        # binaryPath: 'C:/path/to/webclaw-lite.exe'  # or macOS path; skips auto-download
         # liteBaseUrl: 'https://cdn.example.com/webclaw/v0.1.8'  # tried before GitHub/mirrors
         # systems:  # private deploy only — use real SSO URL when available (no password)
         #   - id: ehr

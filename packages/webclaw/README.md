@@ -31,11 +31,11 @@ pnpm add @lonk1989/webclaw
     - id: webclaw
       name: '@lonk1989/webclaw'
       config:
-        # defaults: ensureOnBoot true → download lite (Windows, multi-source)
+        # defaults: ensureOnBoot true → download lite (Windows / macOS arm64)
         registerSkill: true
         recipesRel: recipes
         # Optional overrides:
-        # binaryPath: 'C:/path/to/webclaw-lite.exe'
+        # binaryPath: 'C:/path/to/webclaw-lite.exe'  # or '/path/to/webclaw-lite'
         # liteBaseUrl: 'https://cdn.example.com/webclaw/v0.1.8'  # tried first
         # systems:   # private DSH fork only — real login URLs, no passwords
         #   - id: ehr
@@ -43,23 +43,35 @@ pnpm add @lonk1989/webclaw
         #     url: https://example.com/ehr-login
 ```
 
-### webclaw-lite binary (Windows)
+### webclaw-lite binary (Windows / macOS)
 
-You do **not** need to install lite by hand when using the defaults:
+You do **not** need to install lite by hand when using the defaults on **Windows x64** or **macOS Apple Silicon (arm64)**:
 
-1. Plugin boot (and first tool call) downloads `webclaw-lite-windows-x64.exe` for **this package version**
+1. Plugin boot (and first tool call) downloads the matching Release asset for **this package version** (`webclaw-lite-windows-x64.exe` or `webclaw-lite-macos-arm64`)
 2. Sources (in order): non-GitHub `liteBaseUrl` → `WEBCLAW_LITE_MIRRORS` → built-in mirrors (`ghfast.top`, then `mirror.ghproxy.com`) → official GitHub (last, so CN users are not stuck waiting on a dead GitHub)
-3. Verifies the companion `.sha256`, then installs to `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe`
+3. Verifies the companion `.sha256`, then installs to `%LOCALAPPDATA%\webclaw\bin\webclaw-lite.exe` (Windows) or `~/.webclaw/bin/webclaw-lite` (macOS)
 4. Runs `webclaw-lite install` (Chrome probe + marker)
 
 Each source times out after ~60s before the next. Set `WEBCLAW_LITE_MIRRORS` to comma-separated release dirs or proxy prefixes if you need extra fallbacks.
 
-Non-Windows: set `binaryPath` to a locally built binary (Release assets are Windows-first for now), or build from `runtime/`.
+**macOS Gatekeeper:** unsigned downloads may be quarantined. Clear with:
 
-Manual one-liner (optional):
+```sh
+xattr -d com.apple.quarantine ~/.webclaw/bin/webclaw-lite
+```
+
+**macOS Intel (x64) / Linux:** set `binaryPath` to a locally built binary, or build from `runtime/` (x64 asset name is reserved; CI does not publish it yet).
+
+Manual installers (optional):
 
 ```powershell
+# Windows
 irm https://raw.githubusercontent.com/lonk1989/webclaw-oss/main/static/webclaw-lite/install.ps1 | iex
+```
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/lonk1989/webclaw-oss/main/static/webclaw-lite/install.sh | bash
 ```
 
 ## Model experience
@@ -94,15 +106,15 @@ This runs `webclaw-lite accounts ensure` and never writes passwords. Keep real U
 
 ### User credentials (once per machine) — settings form
 
-Open **Settings → 网站账号** in DSH (local Host must be on this machine). The form talks to a **loopback-only** service (`127.0.0.1:19229` by default); passwords are written into the webclaw vault (DPAPI on Windows) and **never** enter chat or the model.
+Open **Settings → 网站账号** in DSH (local Host must be on this machine). The form talks to a **loopback-only** service (`127.0.0.1:19229` by default); passwords are written into the webclaw vault (DPAPI on Windows; obfuscated storage on macOS) and **never** enter chat or the model.
 
-Fallback (no PATH needed):
+Fallback launchers (no PATH needed; created on plugin boot):
 
 ```text
-%LOCALAPPDATA%\webclaw\bin\webclaw-accounts.cmd
+Windows: %LOCALAPPDATA%\webclaw\bin\webclaw-accounts.cmd
+macOS:   ~/.webclaw/bin/webclaw-accounts
 ```
 
-That launcher is created on plugin boot. A `webclaw-lite.cmd` wrapper with an absolute path is written next to it so you need not add `webclaw-lite` to PATH.
 
 Config knobs: `accountsUi` (default true), `accountsUiPort` (default 19229).
 

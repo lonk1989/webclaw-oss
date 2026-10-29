@@ -5,7 +5,7 @@
 #   # or: pnpm add E:/Workspace/webclaw-oss/packages/webclaw
 #   pnpm dsh web --patch examples/cordis.patch.yml
 #
-# Defaults auto-download webclaw-lite from GitHub Releases on Windows.
+# Defaults auto-download webclaw-lite from GitHub Releases (Windows / macOS arm64).
 # For local cargo builds only, set binaryPath explicitly.
 #
 # systems: deploy overlay — id/name/url only (accounts ensure on boot). Put REAL

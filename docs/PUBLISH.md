@@ -14,9 +14,14 @@
 ## Release flow
 
 Keep **npm `packages/webclaw` version** and the **git tag** in lockstep (e.g. package `0.1.8` → tag `v0.1.8`).  
-The Cordis plugin auto-downloads  
-`https://github.com/lonk1989/webclaw-oss/releases/download/v{version}/webclaw-lite-windows-x64.exe`  
-(with built-in mirror fallbacks for unstable GitHub access).
+The Cordis plugin auto-downloads the host asset under  
+`https://github.com/lonk1989/webclaw-oss/releases/download/v{version}/`  
+(with built-in mirror fallbacks for unstable GitHub access):
+
+| Host | Asset |
+|------|--------|
+| Windows x64 | `webclaw-lite-windows-x64.exe` |
+| macOS arm64 | `webclaw-lite-macos-arm64` |
 
 ```sh
 # after bumping packages/webclaw/package.json version
@@ -26,7 +31,7 @@ git push origin v0.1.8
 
 GitHub Actions (`release.yml`) will:
 
-- Build `webclaw-lite-windows-x64.exe` (+ `.sha256`) and attach them to the GitHub Release
+- Build Windows + macOS arm64 lite binaries (+ `.sha256`) and attach them to the GitHub Release
 - `npm publish` `@lonk1989/webclaw` via Trusted Publishing (OIDC)
 
 ## Manual publish
@@ -40,7 +45,8 @@ npm publish --access public
 ```powershell
 cd ../..
 cargo build --release --bin webclaw-lite --manifest-path runtime/Cargo.toml
-# upload target/release/webclaw-lite.exe to the Release
+# Windows: upload target/release/webclaw-lite.exe as webclaw-lite-windows-x64.exe
+# macOS:   upload target/release/webclaw-lite as webclaw-lite-macos-arm64
 ```
 
 ## After publish
