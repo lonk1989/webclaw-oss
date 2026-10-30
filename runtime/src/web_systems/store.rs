@@ -784,9 +784,116 @@ pub fn find_web_system_by_query(query: &str) -> Result<WebSystem, String> {
     }
 }
 
+/// LLM 常把「打开浏览器访问」写进「打开」参数，lite 会当成主机名 → `xn--%20http-…`。
+const OPEN_URL_FLUFF: &[&str] = &[
+    "请打开浏览器访问",
+    "打开浏览器访问",
+    "打开浏览器",
+    "浏览器访问",
+    "打开网址",
+    "访问网址",
+    "打开页面",
+    "打开链接",
+    "请访问",
+    "请打开",
+    "前往",
+    "访问",
+];
+
+fn find_http_scheme_at(s: &str) -> Option<usize> {
+    let lower = s.to_ascii_lowercase();
+    let a = lower.find("https://");
+    let b = lower.find("http://");
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.min(y)),
+        (Some(x), None) => Some(x),
+        (None, Some(y)) => Some(y),
+        (None, None) => None,
+    }
+}
+
+fn cut_url_candidate(s: &str) -> &str {
+    let end = s
+        .char_indices()
+        .find(|(_, c)| {
+            c.is_whitespace()
+                || matches!(*c, '，' | '。' | '；' | '、' | '<' | '>' | '"' | '\'')
+                || ('\u{4e00}'..='\u{9fff}').contains(c)
+        })
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    s[..end].trim_end_matches(|c: char| {
+        matches!(c, ')' | ']' | '】' | '》' | '」' | '\'' | '"')
+    })
+}
+
+/// Rescue `https://xn--…http…//real.host/path` (Chinese glued before scheme).
+fn rescue_puny_scheme_eaten(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let lower = s.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return None;
+    }
+    if !lower.contains("xn--") || !lower.contains("http") {
+        return None;
+    }
+    // First // is after the scheme; second // starts the real host path.
+    let after_scheme = if lower.starts_with("https://") { 8 } else { 6 };
+    let host_and_rest = s.get(after_scheme..)?;
+    if !host_and_rest.to_ascii_lowercase().starts_with("xn--") {
+        return None;
+    }
+    let second = host_and_rest.find("//")?;
+    let path_from_host = &host_and_rest[second..]; // //host/…
+    if path_from_host.len() < 3 || !path_from_host.as_bytes()[2].is_ascii_alphanumeric() {
+        return None;
+    }
+    let puny_host = &host_and_rest[..second];
+    let https = puny_host.to_ascii_lowercase().contains("https");
+    Some(format!(
+        "{}{}",
+        if https { "https:" } else { "http:" },
+        path_from_host
+    ))
+}
+
+/// Strip Chinese open-verbs and recover a navigable http(s) URL from「打开」args.
+/// e.g. `浏览器访问 http://zhhw…` → `http://zhhw…`
+pub fn coerce_navigate_url(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    if s.is_empty() {
+        return s;
+    }
+    if let Some(fixed) = rescue_puny_scheme_eaten(&s) {
+        return cut_url_candidate(&fixed).to_string();
+    }
+
+    // Peel fluff / bare「打开」until stable.
+    for _ in 0..8 {
+        let before = s.clone();
+        for p in OPEN_URL_FLUFF {
+            if s.starts_with(p) {
+                s = s[p.len()..].trim_start().to_string();
+            }
+        }
+        if s.starts_with("打开") {
+            s = s.trim_start_matches("打开").trim_start().to_string();
+        }
+        if s == before {
+            break;
+        }
+    }
+
+    if let Some(idx) = find_http_scheme_at(&s) {
+        return cut_url_candidate(&s[idx..]).to_string();
+    }
+    s
+}
+
 /// 将「打开B站」或「B站」等查询解析为 URL：已是 URL 则原样返回，否则匹配网站账号配置
 pub fn resolve_open_url_from_query(raw: &str) -> Option<String> {
-    let mut q = raw.trim();
+    let coerced = coerce_navigate_url(raw);
+    let mut q = coerced.trim();
     if q.is_empty() {
         return None;
     }
@@ -852,6 +959,36 @@ mod tests {
         );
         assert!(resolve_open_url_from_query("").is_none());
         assert!(resolve_open_url_from_query("打开").is_none());
+    }
+
+    #[test]
+    fn coerce_strips_browser_visit_fluff() {
+        assert_eq!(
+            coerce_navigate_url("浏览器访问 http://zhhw.clean-pro.cn:18082/#/"),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
+        assert_eq!(
+            coerce_navigate_url("打开浏览器访问 http://zhhw.clean-pro.cn:18082/#/"),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
+        assert_eq!(
+            coerce_navigate_url("打开浏览器访问http://zhhw.clean-pro.cn:18082/#/"),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
+    }
+
+    #[test]
+    fn coerce_rescues_puny_scheme_eaten() {
+        assert_eq!(
+            coerce_navigate_url("https://xn--http-9z2h93o//zhhw.clean-pro.cn:18082/#/"),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
+        assert_eq!(
+            coerce_navigate_url(
+                "https://xn--%20http-0v7l951our7cese330b//zhhw.clean-pro.cn:18082/#/"
+            ),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
     }
 
     #[test]

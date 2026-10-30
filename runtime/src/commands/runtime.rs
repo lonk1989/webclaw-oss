@@ -3775,6 +3775,8 @@ fn normalize_url(url: &str) -> String {
         .trim()
         .trim_end_matches(|c: char| matches!(c, '，' | ',' | '、' | ';' | '；') || c.is_whitespace())
         .to_string();
+    // 「打开浏览器访问 http://…」→ 抽出真 URL，避免 https://浏览器访问%20http://… → xn--
+    let url = crate::web_systems::coerce_navigate_url(&url);
     if url.starts_with("http://") || url.starts_with("https://") {
         return url;
     }
@@ -3799,6 +3801,24 @@ fn normalize_url(url: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn normalize_url_strips_browser_visit_fluff() {
+        assert_eq!(
+            normalize_url("浏览器访问 http://zhhw.clean-pro.cn:18082/#/"),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
+        assert_eq!(
+            normalize_url("打开浏览器访问https://example.com/a"),
+            "https://example.com/a"
+        );
+        assert_eq!(
+            normalize_url(
+                "https://xn--%20http-0v7l951our7cese330b//zhhw.clean-pro.cn:18082/#/"
+            ),
+            "http://zhhw.clean-pro.cn:18082/#/"
+        );
+    }
 
     #[test]
     fn should_follow_active_tab_policy() {

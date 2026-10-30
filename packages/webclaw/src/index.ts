@@ -33,6 +33,7 @@ import {
   type RecipeParamKv,
 } from './params.js'
 import { redactSecrets } from './redact.js'
+import { sanitizeWebclawRecipe } from './url-coerce.js'
 import {
   ACCOUNTS_UI_DEFAULT_PORT,
   startAccountsUiServer,
@@ -500,9 +501,11 @@ export function apply(ctx: Context, config: Config): void {
             const sourcePath = pathArg
               ? resolveRecipePath(recipesCfg(config), pathArg, cwd)
               : undefined
-            const rawContent = inline
-              ? inline
-              : readFileSync(sourcePath!, { encoding: 'utf8' })
+            const rawContent = sanitizeWebclawRecipe(
+              inline
+                ? inline
+                : readFileSync(sourcePath!, { encoding: 'utf8' }),
+            )
 
             const declared = extractRecipeParams(rawContent)
             // Tool schema may deliver object or string; parseParamsArg accepts both.
@@ -708,12 +711,14 @@ export function apply(ctx: Context, config: Config): void {
               throw new Error('recipe or recipePath is required')
             }
             const cwd = agentCwd(exec)
-            const content = inline
-              ? inline
-              : readFileSync(
-                  resolveRecipePath(recipesCfg(config), pathArg, cwd),
-                  { encoding: 'utf8' },
-                )
+            const content = sanitizeWebclawRecipe(
+              inline
+                ? inline
+                : readFileSync(
+                    resolveRecipePath(recipesCfg(config), pathArg, cwd),
+                    { encoding: 'utf8' },
+                  ),
+            )
             const params = extractRecipeParams(content)
             return {
               ok: true,
